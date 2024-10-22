@@ -1,6 +1,6 @@
 use bevy::{prelude::*, render::{render_resource::{TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, Extent3d}, camera::{RenderTarget, Viewport, ScalingMode}}, window::{PrimaryWindow, WindowResized}};
 
-use crate::character::Player;
+use crate::{character::Player, post_process::{PaletteSwapPostProcessSettings, PaletteSwapPostProcessPlugin}};
 
 // A camera that only draws a certain area of pixels.
 // Uses a render target to draw to, then scales that up to whatever size is required.
@@ -40,7 +40,8 @@ fn pixel_camera_changed(mut query: Query<(&mut OrthographicProjection, &mut Tran
 #[derive(Bundle)]
 pub struct PixelCameraBundle {
     cam2d_bundle: Camera2dBundle,
-    pixel_camera: PixelCamera
+    pixel_camera: PixelCamera,
+    pallet_swap_settings: PaletteSwapPostProcessSettings
 }
 
 impl Default for PixelCameraBundle {
@@ -55,7 +56,10 @@ impl Default for PixelCameraBundle {
                 },
                 ..default()
             },
-            pixel_camera: default()
+            pixel_camera: default(),
+            pallet_swap_settings: PaletteSwapPostProcessSettings {
+                intensity: 0.2
+            }
         }
     }
 }

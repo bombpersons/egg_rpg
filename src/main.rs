@@ -10,6 +10,7 @@ mod collision;
 mod camera;
 mod character;
 mod util;
+mod post_process;
 
 const FIXED_TIMESTEP: f64 = 1.0 / 60.0;
 
@@ -78,5 +79,8 @@ fn main() {
         .add_plugins(camera::PlayerFollowCameraPlugin)
         .add_plugins(character::CharacterPlugin)
         .insert_resource(Time::<Fixed>::from_seconds(FIXED_TIMESTEP))
+
+
+        .add_plugins(post_process::PaletteSwapPostProcessPlugin)
         .run();
 }
