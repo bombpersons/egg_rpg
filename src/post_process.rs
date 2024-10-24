@@ -49,8 +49,7 @@ impl Plugin for PaletteSwapPostProcessPlugin {
             // This plugin will prepare the component for the GPU by creating a uniform buffer
             // and writing the data to that buffer every frame.
             UniformComponentPlugin::<PaletteSwapPostProcessSettings>::default(),
-        ))
-        .add_systems(Update, (update_settings));
+        ));
 
         // We need to get the render app from the main app
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -226,9 +225,6 @@ struct PostProcessPipeline {
 
 impl FromWorld for PostProcessPipeline {
     fn from_world(world: &mut World) -> Self {
-
-        println!("HEEEEEY");
-
         let render_device = world.resource::<RenderDevice>();
 
         // We need to define the bind group layout used for our pipeline
@@ -293,25 +289,30 @@ impl FromWorld for PostProcessPipeline {
 // This is the component that will get passed to the shader
 #[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]
 pub struct PaletteSwapPostProcessSettings {
-    pub intensity: f32,
+    // The four colours in our palette
+    pub colour_one: Vec3,
+    pub colour_two: Vec3,
+    pub colour_three: Vec3,
+    pub colour_four: Vec3,
+
     // WebGL2 structs must be 16 byte aligned.
     #[cfg(feature = "webgl2")]
     _webgl2_padding: Vec3,
 }
 
-// Change the intensity over time to show that the effect is controlled from the main world
-fn update_settings(mut settings: Query<&mut PaletteSwapPostProcessSettings>, time: Res<Time>) {
-    for mut setting in &mut settings {
-        let mut intensity = time.elapsed_seconds().sin();
-        // Make it loop periodically
-        intensity = intensity.sin();
-        // Remap it to 0..1 because the intensity can't be negative
-        intensity = intensity * 0.5 + 0.5;
-        // Scale it to a more reasonable level
-        intensity *= 0.015;
+// // Change the intensity over time to show that the effect is controlled from the main world
+// fn update_settings(mut settings: Query<&mut PaletteSwapPostProcessSettings>, time: Res<Time>) {
+//     for mut setting in &mut settings {
+//         let mut intensity = time.elapsed_seconds().sin();
+//         // Make it loop periodically
+//         intensity = intensity.sin();
+//         // Remap it to 0..1 because the intensity can't be negative
+//         intensity = intensity * 0.5 + 0.5;
+//         // Scale it to a more reasonable level
+//         intensity *= 0.015;
 
-        // Set the intensity.
-        // This will then be extracted to the render world and uploaded to the gpu automatically by the [`UniformComponentPlugin`]
-        setting.intensity = intensity;
-    }
-}
+//         // Set the intensity.
+//         // This will then be extracted to the render world and uploaded to the gpu automatically by the [`UniformComponentPlugin`]
+//         setting.intensity = intensity;
+//     }
+// }

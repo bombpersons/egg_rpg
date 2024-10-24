@@ -5,7 +5,9 @@ use bevy::time;
 use bevy_ecs_tilemap::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use palette::PalettePlugin;
 
+mod palette;
 mod collision;
 mod camera;
 mod character;
@@ -78,8 +80,9 @@ fn main() {
         .add_plugins(collision::CollisionPlugin)
         .add_plugins(camera::PlayerFollowCameraPlugin)
         .add_plugins(character::CharacterPlugin)
-        .insert_resource(Time::<Fixed>::from_seconds(FIXED_TIMESTEP))
+        .add_plugins(PalettePlugin)
 
+        .insert_resource(Time::<Fixed>::from_seconds(FIXED_TIMESTEP))
 
         .add_plugins(post_process::PaletteSwapPostProcessPlugin)
         .run();

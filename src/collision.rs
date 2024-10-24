@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, thread::current};
 
 use bevy::prelude::*;
 use bevy_ecs_ldtk::{prelude::*, utils::{ldtk_grid_coords_to_grid_coords, ldtk_pixel_coords_to_grid_coords, ldtk_pixel_coords_to_translation, translation_to_grid_coords}};
@@ -10,7 +10,7 @@ use bevy_ecs_ldtk::app::LdtkEntity;
 use bevy_inspector_egui::egui::Grid;
 use ldtk::loaded_level::LoadedLevel;
 
-const TILE_GRID_SIZE: IVec2 = IVec2::new(16, 16);
+pub const TILE_GRID_SIZE: IVec2 = IVec2::new(16, 16);
 const BLOCKED_TILE_GRID_CELL: i32 = 1;
 
 // This will be swapped out for a valid worldgridcoords
@@ -22,7 +22,73 @@ pub struct WorldGridCoordsRequired;
 pub struct WorldGridCoords {
     pub x: i32,
     pub y: i32, 
-    pub z: i32 // Layer
+    pub z: i32 // Layer,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Component)]
+pub struct CurrentLevel {
+    pub level_iid: Option<LevelIid>
+}
+
+impl Default for CurrentLevel {
+    fn default() -> Self {
+        Self {
+            level_iid: None
+        }
+    }
+}
+
+// If an entity has a world grid coord component, then we can use that position to determine which level bounds it intersects
+// with! Then, other systems that need to know what level a wordly entity is located within can know easily.
+fn track_level(mut wordly_query: Query<(&WorldGridCoords, &GlobalTransform, &mut CurrentLevel), With<Worldly>>,
+              levels: Query<(&LevelIid, &GlobalTransform)>,
+              ldtk_projects: Query<&Handle<LdtkProject>>,
+              ldtk_project_assets: Res<Assets<LdtkProject>>) {
+    
+    // Get the ldtk project .
+    let ldtk_project = ldtk_project_assets.get(ldtk_projects.single()).expect("ldtk project should be loaded before track_level system runs.");
+
+    // For each worldy entity that we are keeping track of.
+    for (world_grid_coords, global_transform, mut current_level) in &mut wordly_query {
+
+        // The level we've chosen that intersects.
+        let mut selected_level = None;
+
+        // Go through each level and see which bounds we are contained within.
+        for (level_iid, level_transform) in levels.iter() {
+            let level = ldtk_project
+                .get_raw_level_by_iid(level_iid.get())
+                .expect("level should exist in only project");
+
+            let level_bounds = Rect {
+                min: Vec2::new(
+                    level_transform.translation().x,
+                    level_transform.translation().y,
+                ),
+                max: Vec2::new(
+                    level_transform.translation().x + level.px_wid as f32,
+                    level_transform.translation().y + level.px_hei as f32,
+                ),
+            };
+
+            // We're within the 2d bounds...
+            if level_bounds.contains(global_transform.translation().xy()) {
+
+                // Check if our z coordinate is the same?
+                if world_grid_coords.z == level.world_depth {
+
+                    // We are contained by this level bounds.
+                    selected_level = Some(level_iid.clone());
+
+                    // Stop looking for this entity.
+                    break;
+                }
+            }
+        }
+
+        // Set the level.
+        current_level.level_iid = selected_level
+    }
 }
 
 // A system that should set the world grid coords component to have correct world grid coordinates.
@@ -47,13 +113,13 @@ fn world_grid_coords_added(mut commands: Commands,
                 // Now finally get the level.
                 let level = ldtk_project.get_raw_level_by_iid(level_iid.get()).expect("world grid coord tile should have a grandparent level!");
                 
-                println!("level world pos: {}, {}, {}", level.world_x, level.world_y, level.world_depth);
+                //println!("level world pos: {}, {}, {}", level.world_x, level.world_y, level.world_depth);
 
                 // Yay, this is the adjustment required *phew*
                 let mut level_origin_adjusted = IVec2::new(level.world_x, 0 - level.world_y - level.px_hei);
                 level_origin_adjusted = level_origin_adjusted / TILE_GRID_SIZE;
 
-                println!("level world pos adjusted: {}, {}", level_origin_adjusted.x, level_origin_adjusted.y);
+                //println!("level world pos adjusted: {}, {}", level_origin_adjusted.x, level_origin_adjusted.y);
 
                 // Hurray now we can get the absolute origin of the level and adjust our coordinates.
                 // Insert the valid world grid coord component
@@ -67,7 +133,7 @@ fn world_grid_coords_added(mut commands: Commands,
                 // Remove the old component
                 commands.entity(entity).remove::<WorldGridCoordsRequired>();
 
-                println!("Blocked tile at: {}, {}, {}", world_grid_coords.x, world_grid_coords.y, world_grid_coords.z);    
+                //println!("Blocked tile at: {}, {}, {}", world_grid_coords.x, world_grid_coords.y, world_grid_coords.z);    
             }
         }
     }
@@ -97,7 +163,6 @@ pub struct BlockedTilesCache {
 
 // Whenever a level is loaded, then rebuild our cache.
 fn build_blocked_tile_cache(mut blocked_tiles_cache: ResMut<BlockedTilesCache>,
-                            mut level_events: EventReader<LevelEvent>,
                             blocked_tiles: Query<&WorldGridCoords, With<BlockedTile>>) {
     
     // Collect all of the blocked tiles that currently exist.
@@ -125,6 +190,6 @@ impl Plugin for CollisionPlugin {
         app.init_resource::<BlockedTilesCache>();
 
         // The system for keeping it up to date.
-        app.add_systems(Update, (world_grid_coords_added, build_blocked_tile_cache));
+        app.add_systems(Update, (world_grid_coords_added, track_level, build_blocked_tile_cache));
     }
 }

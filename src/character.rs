@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use bevy::{prelude::*, transform::components};
+use bevy::{ecs::world, prelude::*, transform::components};
 use bevy_ecs_tilemap::prelude::*;
 use bevy_ecs_ldtk::{assets::{InternalLevels, LdtkJsonWithMetadata}, prelude::*};
 
-use crate::{camera::PlayerFollowCameraBundle, collision::{BlockedTilesCache, WorldGridCoords, WorldGridCoordsRequired}};
+use crate::{camera::PlayerFollowCameraBundle, collision::{self, BlockedTilesCache, CurrentLevel, WorldGridCoords, WorldGridCoordsRequired}};
 
 const MOVEMENT_TICK: f32 = 20.0 / 60.0;
 const ANIMATION_FRAME_TIME: f32 = MOVEMENT_TICK / 2.0;
@@ -48,15 +48,15 @@ impl From<&EntityInstance> for WarpTile {
 fn warp_player(mut commands: Commands,
                mut level_select: ResMut<LevelSelection>, 
                mut tile_moved_event_reader: EventReader<TileMovedEvent>,
-               mut player_query: Query<(Entity, &Player, &GridCoords), Without<WarpTile>>,
-               mut warp_tiles: Query<(&WarpTile, &GridCoords), Without<Player>>) 
+               mut player_query: Query<(Entity, &Player, &WorldGridCoords), Without<WarpTile>>,
+               mut warp_tiles: Query<(&WarpTile, &WorldGridCoords), Without<Player>>) 
 {   
     // Only triggers when a tile moves from one tile to another.
     for tile_moved_event in tile_moved_event_reader.read() {
         // Find entity in our query. (only interested in potential player)
-        if let Ok((entity, player, grid_coords)) = player_query.get(tile_moved_event.entity) {
+        if let Ok((entity, player, world_grid_coords)) = player_query.get(tile_moved_event.entity) {
             for (warp_tile, tile_grid_coords) in &warp_tiles {
-                if grid_coords.x == tile_grid_coords.x && grid_coords.y == tile_grid_coords.y {
+                if world_grid_coords.x == tile_grid_coords.x && world_grid_coords.y == tile_grid_coords.y && world_grid_coords.z == tile_grid_coords.z {
                     let level_to_load = warp_tile.level_iid.to_string();
                     println!("Warping player to {}", level_to_load);
 
@@ -98,7 +98,7 @@ fn warp_player(mut commands: Commands,
 }
 
 fn handle_pending_warp(mut commands: Commands,
-                       mut player_query: Query<(Entity, &Player, &mut GridCoords, &WarpPending), Without<WarpTargetTile>>,
+                       mut player_query: Query<(Entity, &Player, &mut WorldGridCoords, &WarpPending), Without<WarpTargetTile>>,
                        warp_target_query: Query<(&WarpTargetTile, &WorldGridCoords), Without<Player>>)
 {
     for (entity, player, mut player_grid_coords, warp_pending) in player_query.iter_mut() {
@@ -116,11 +116,12 @@ fn handle_pending_warp(mut commands: Commands,
                 // WARPING!
                 player_grid_coords.x = world_grid_coords.x;
                 player_grid_coords.y = world_grid_coords.y;
+                player_grid_coords.z = world_grid_coords.z;
 
                 // Remove the pending warp component.
                 commands.entity(entity).remove::<WarpPending>();
 
-                println!("Found warp tile, warped to ({}, {})", player_grid_coords.x, player_grid_coords.y);
+                println!("Found warp tile, warped to ({}, {}, {})", player_grid_coords.x, player_grid_coords.y, player_grid_coords.z);
             }
         };
     }
@@ -169,11 +170,9 @@ pub struct TileLocked {
     pub position: IVec2
 }
 
-fn grid_coord_to_world_pos(grid_coords: &GridCoords, offset: Vec2) -> Vec2 {
-    bevy_ecs_ldtk::utils::grid_coords_to_translation(*grid_coords, IVec2::new(16, 16)) + offset
-
-    // Vec2::new(grid_coords.x as f32 * TILE_GRID_SIZE.x as f32 + TILE_GRID_SIZE.x as f32 / 2.0,
-    //           grid_coords.y as f32 * TILE_GRID_SIZE.y as f32 + TILE_GRID_SIZE.y as f32 / 2.0)
+fn world_grid_coord_to_world_pixel(world_grid_coords: &WorldGridCoords) -> Vec2 {
+    let grid_coords = GridCoords { x: world_grid_coords.x, y: world_grid_coords.y };
+    bevy_ecs_ldtk::utils::grid_coords_to_translation(grid_coords, collision::TILE_GRID_SIZE)
 }
 
 // A direction that a TileMover could be moving in.
@@ -225,16 +224,23 @@ impl Default for TileMover {
     }
 }
 
+// Sent whenever an entity moves to another tile.
 #[derive(Event)]
 struct TileMovedEvent {
     entity: Entity,
     pos: IVec2
 }
 
+// Sent when the player entity is moved into a new level that it wasn't in previously.
+#[derive(Event)]
+struct PlayerMovedIntoNewLevel {
+    level: LevelIid
+}
+
 fn tile_movement_tick(time: Res<Time>, blocked_tile_cache: Res<BlockedTilesCache>,
                       mut tile_moved_event_writer: EventWriter<TileMovedEvent>,
-                      mut query: Query<(Entity, &mut GridCoords, &mut TileMover)>) {
-    for (entity, mut grid_coords, mut tile_mover) in query.iter_mut() {
+                      mut query: Query<(Entity, &mut WorldGridCoords, &mut TileMover)>) {
+    for (entity, mut world_grid_coords, mut tile_mover) in query.iter_mut() {
         // Increment timer.
         tile_mover.timer.tick(time.delta());
 
@@ -244,7 +250,7 @@ fn tile_movement_tick(time: Res<Time>, blocked_tile_cache: Res<BlockedTilesCache
             // If we only just finished the timer, then we finished moving this frame.
             // Trigger a TileMovedEvent, because this is when the tile finished actually moving to the new position.
             if tile_mover.timer.just_finished() {
-                tile_moved_event_writer.send( TileMovedEvent { entity, pos: IVec2::new(grid_coords.x, grid_coords.y) });
+                tile_moved_event_writer.send( TileMovedEvent { entity, pos: IVec2::new(world_grid_coords.x, world_grid_coords.y) });
             }
 
             // If we aren't moving but want to be, process that.
@@ -252,44 +258,21 @@ fn tile_movement_tick(time: Res<Time>, blocked_tile_cache: Res<BlockedTilesCache
                 // Find the grid coords that we want to move to.
                 let want_move_dir_vec = movedir_to_vec(tile_mover.want_move_dir);
                 let position_to_move_to = WorldGridCoords {
-                    x: grid_coords.x + want_move_dir_vec.x as i32, 
-                    y: grid_coords.y + want_move_dir_vec.y as i32,
-                    z: 0
+                    x: world_grid_coords.x + want_move_dir_vec.x as i32, 
+                    y: world_grid_coords.y + want_move_dir_vec.y as i32,
+                    z: world_grid_coords.z
                 };
 
                 // Determine whether or not we can move into that space.
-                // TODO: abort if we can't move.
-                //       maybe do a bonk into the wall type thing?
-
-                // Presumably there's a better way to do this?
-                // let mut blocked = false;
-                // for (grid_coords, entity_instance, blocked_tile) in &blocked_tiles {
-                //     // Use word coords if available since that will include the offsets for the seperate levels.
-                //     let coord = IVec2::new(
-                //         match entity_instance.world_x { Some(x) => x / TILE_GRID_SIZE.x, None => grid_coords.x }, 
-                //         match entity_instance.world_y { Some(y) => y / TILE_GRID_SIZE.y, None => grid_coords.y }
-                //     );
-
-                //     if coord == position_to_move_to {
-                //         blocked = true;
-                //     }
-                // };
-                
-                // // The tile we want to move to is blocked, so don't move to it.
-                // if blocked {
-                //     continue;
-                // }
-
-                // There is a SLIGHTLY better way of doing this!
                 if (blocked_tile_cache.blocked_tile_locations.contains(&position_to_move_to)) {
                     continue;
                 }
 
                 // Move the to the position immediately. We'll animate moving to that spot.
-                grid_coords.x = position_to_move_to.x;
-                grid_coords.y = position_to_move_to.y;
+                world_grid_coords.x = position_to_move_to.x;
+                world_grid_coords.y = position_to_move_to.y;
 
-                println!("Moving character to {}, {}", grid_coords.x, grid_coords.y);
+                println!("Moving character to {}, {}", world_grid_coords.x, world_grid_coords.y);
 
                 // Start the timer.
                 tile_mover.timer.reset();
@@ -311,15 +294,12 @@ fn tile_movement_tick(time: Res<Time>, blocked_tile_cache: Res<BlockedTilesCache
     }
 }
 
-fn tile_movement_lerp(mut query: Query<(&mut GridCoords, &mut TileMover, &mut Transform)>) {
-    //let ldtk_level_offset = Vec2::new(ldtk_level.world_x as f32, -1.0 * (ldtk_level.world_y as f32 + ldtk_level.px_hei as f32));
-    let ldtk_level_offset = Vec2::new(0.0, 0.0);
-
-    for (mut grid_coords, mut tile_mover, mut transform) in query.iter_mut() {
+fn tile_movement_lerp(mut query: Query<(&mut WorldGridCoords, &mut TileMover, &mut Transform)>) {
+    for (mut world_grid_coords, mut tile_mover, mut transform) in query.iter_mut() {
         let move_dir_vec = movedir_to_vec(tile_mover.moving_dir);
-        let moving_to_pos = grid_coord_to_world_pos(&grid_coords, ldtk_level_offset);
-        let moving_from_gridcoord = GridCoords { x: grid_coords.x - move_dir_vec.x, y: grid_coords.y - move_dir_vec.y };
-        let moving_from_pos = grid_coord_to_world_pos(&moving_from_gridcoord, ldtk_level_offset);
+        let moving_to_pos = world_grid_coord_to_world_pixel(&world_grid_coords);
+        let moving_from_gridcoord = WorldGridCoords { x: world_grid_coords.x - move_dir_vec.x, y: world_grid_coords.y - move_dir_vec.y, z: world_grid_coords.z };
+        let moving_from_pos = world_grid_coord_to_world_pixel(&moving_from_gridcoord);
         
         let z = transform.translation.z;
 
@@ -456,6 +436,9 @@ pub struct PlayerBundle {
 
     #[grid_coords]
     pub grid_coords: GridCoords,
+    world_grid_coords_required: WorldGridCoordsRequired,
+
+    current_level: CurrentLevel,
 
     #[worldly]
     wordly: Worldly
