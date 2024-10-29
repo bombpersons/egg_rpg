@@ -63,10 +63,11 @@ impl Default for PixelCameraBundle {
             },
             pixel_camera: default(),
             pallet_swap_settings: PaletteSwapPostProcessSettings {
-                colour_one: Vec3::new(colour_one.red, colour_one.green, colour_one.blue),
-                colour_two: Vec3::new(colour_two.red, colour_two.green, colour_two.blue),
-                colour_three: Vec3::new(colour_three.red, colour_three.green, colour_three.blue),
-                colour_four: Vec3::new(colour_four.red, colour_four.green, colour_four.blue),
+                colours: [Vec3::new(colour_one.red, colour_one.green, colour_one.blue), 
+                          Vec3::new(colour_two.red, colour_two.green, colour_two.blue), 
+                          Vec3::new(colour_three.red, colour_three.green, colour_three.blue), 
+                          Vec3::new(colour_four.red, colour_four.green, colour_four.blue)],
+                darkness: 0,
             }
         }
     }

@@ -51,6 +51,8 @@ impl Plugin for PaletteSwapPostProcessPlugin {
             UniformComponentPlugin::<PaletteSwapPostProcessSettings>::default(),
         ));
 
+        //app.add_systems(Update, update_darkness);
+
         // We need to get the render app from the main app
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -290,14 +292,25 @@ impl FromWorld for PostProcessPipeline {
 #[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]
 pub struct PaletteSwapPostProcessSettings {
     // The four colours in our palette
-    pub colour_one: Vec3,
-    pub colour_two: Vec3,
-    pub colour_three: Vec3,
-    pub colour_four: Vec3,
+    pub colours: [Vec3; 4],
+
+    // Levels of darkness / light. 0 is no change, 
+    // 4 is fully dark (all palette colors are changed to the darkest), 
+    // -4 is fully light (all palette colors are changed to the lightest).
+    pub darkness: i32,
 
     // WebGL2 structs must be 16 byte aligned.
     #[cfg(feature = "webgl2")]
     _webgl2_padding: Vec3,
+}
+
+fn update_darkness(mut settings: Query<&mut PaletteSwapPostProcessSettings>, time: Res<Time>) {
+    for mut setting in &mut settings {
+        let mut darkness = time.elapsed_seconds().sin();
+        darkness = darkness.sin();
+
+        setting.darkness = (darkness * 4.0) as i32;
+    }
 }
 
 // // Change the intensity over time to show that the effect is controlled from the main world

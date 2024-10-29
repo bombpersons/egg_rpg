@@ -64,17 +64,10 @@ fn check_palette(player_query: Query<&CurrentLevel, With<Player>>,
 
                                 // It matches, so switch over the colors to match this palette.
                                 if let Ok(mut palette_settings) = palette_settings_query.get_single_mut() {
-                                    let colour_one = palette.colours[0].to_linear();
-                                    palette_settings.colour_one = Vec3::new(colour_one.red, colour_one.green, colour_one.blue);
-
-                                    let colour_two = palette.colours[1].to_linear();
-                                    palette_settings.colour_two = Vec3::new(colour_two.red, colour_two.green, colour_two.blue);
-
-                                    let colour_three = palette.colours[2].to_linear();
-                                    palette_settings.colour_three = Vec3::new(colour_three.red, colour_three.green, colour_three.blue);
-
-                                    let colour_four = palette.colours[3].to_linear();
-                                    palette_settings.colour_four = Vec3::new(colour_four.red, colour_four.green, colour_four.blue);
+                                    for (index, colour) in palette.colours.iter().enumerate() {
+                                        let linear = colour.to_linear();
+                                        palette_settings.colours[index] = Vec3::new(linear.red, linear.green, linear.blue);
+                                    }
                                 }
                             }
                         }

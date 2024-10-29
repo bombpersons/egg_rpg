@@ -4,7 +4,7 @@ use bevy::{ecs::world, prelude::*, sprite::{Material2d, MaterialMesh2dBundle}, t
 use bevy_ecs_tilemap::prelude::*;
 use bevy_ecs_ldtk::{assets::{InternalLevels, LdtkJsonWithMetadata}, prelude::*};
 
-use crate::{camera::PlayerFollowCameraBundle, collision::{self, BlockedTilesCache, CurrentLevel, WorldGridCoords, WorldGridCoordsRequired}};
+use crate::{camera::PlayerFollowCameraBundle, collision::{self, BlockedTilesCache, CurrentLevel, WorldGridCoords, WorldGridCoordsRequired}, post_process::PaletteSwapPostProcessSettings};
 
 const MOVEMENT_TICK: f32 = 20.0 / 60.0;
 const ANIMATION_FRAME_TIME: f32 = MOVEMENT_TICK / 2.0;
@@ -52,33 +52,13 @@ const WARP_FADE_OUT_TIME: Duration = Duration::from_millis(500);
 #[derive(Clone, Component)]
 struct WarpLocked {
     level_iid: LevelIid,
-    warp_target_entity_iid: EntityIid
+    warp_target_entity_iid: EntityIid,
+    fade_out_timer: Timer
 }
 
 // Specifies that the player is waiting for the new level to be loaded so that they can be warped to their target.
 #[derive(Clone, Component)]
 struct WarpPending;
-
-// A timer so that we can fade out a rect on the screen whilst the player is locked in place.
-#[derive(Clone, Component)]
-struct WarpFadeOut {
-    timer: Timer
-}
-
-impl Default for WarpFadeOut {
-    fn default() -> Self {
-        Self {
-            timer: Timer::new(Duration::from_secs_f32(WARP_FADE_OUT_TIME.as_secs_f32()), TimerMode::Once)
-        }
-    }
-}
-
-// The actual rect that overlays everything whilst we fade out.
-#[derive(Clone, Default, Bundle)]
-struct WarpFadeOutBundle {
-    sprite: MaterialMesh2dBundle<ColorMaterial>,
-    warp_fade_out: WarpFadeOut
-}
 
 fn warp_player(mut commands: Commands,
                mut tile_moved_event_reader: EventReader<TileMovedEvent>,
@@ -103,6 +83,7 @@ fn warp_player(mut commands: Commands,
                             commands.entity(player_entity).insert(WarpLocked {
                                 level_iid: level_iid.clone(),
                                 warp_target_entity_iid: warp_target_entity_iid.clone(),
+                                fade_out_timer: Timer::new(Duration::from_secs_f32(WARP_FADE_OUT_TIME.as_secs_f32()), TimerMode::Once)
                             });
 
                         }
@@ -113,66 +94,39 @@ fn warp_player(mut commands: Commands,
     }
 }
 
-// Spawn the fade out rect in response to the player getting warp locked.
-fn spawn_fade_out(mut commands: Commands,
-                  mut player_query: Query<(Entity, &Player, &GlobalTransform), Added<WarpLocked>>,
-                  mut meshes: ResMut<Assets<Mesh>>,
-                  mut materials: ResMut<Assets<ColorMaterial>>) {
-
-    // If a warp was requested...
-    if let Ok((entity, player, global_transform)) = player_query.get_single() {
-        // Add a quad over the whole screen that fades to black. With the palette post processing
-        // this should fade in step until the 4 colours all turn to black 
-        // Then when it's fully black, we'll deal with the pending warp and actually teleport.
-        commands.spawn(WarpFadeOutBundle {
-            sprite: MaterialMesh2dBundle {
-                mesh: meshes.add(Rectangle::default()).into(),
-                transform: Transform::default().with_scale(Vec3::splat(2000.0)).with_translation(global_transform.translation()),
-                material: materials.add(Color::srgba(0.0, 0.0, 0.0, 1.0)),
-                ..Default::default()
-            },
-            warp_fade_out: WarpFadeOut::default()
-        });
-    }
-}
-
 // Slowly fade out the rect. Once we've faded out completely, actually warp the player.
 fn warp_fade_out(time: Res<Time>, 
                  mut commands: Commands,
                  mut level_select: ResMut<LevelSelection>, 
-                 mut fade_out_query: Query<(&mut WarpFadeOut, &Handle<ColorMaterial>)>,
-                 player_query: Query<(Entity, &WarpLocked), With<Player>>,
-                 mut materials: ResMut<Assets<ColorMaterial>>) {
+                 mut player_query: Query<(Entity, &mut WarpLocked), With<Player>>,
+                 mut palette_settings: Query<&mut PaletteSwapPostProcessSettings>) {
 
-    // Map the time left on the fade out to the transparency of the color of the material.
-    for (mut fade_out, material) in &mut fade_out_query {
+    if let Ok((entity, mut warp_locked)) = player_query.get_single_mut() {
         // Reduce our timer.
-        fade_out.timer.tick(time.delta());
-        if fade_out.timer.just_finished() {
-            // Actually warp the player.
-            if let Ok((player_entity, warp_locked)) = player_query.get_single() {
+        warp_locked.fade_out_timer.tick(time.delta());
 
-                // Load the target level.
-                *level_select = LevelSelection::Iid(warp_locked.level_iid.clone());
+        // How dark do we need to be?
+        let mut darkness = (warp_locked.fade_out_timer.fraction() * 4.0) as i32;
 
-                // Add a pending warp.
-                commands.entity(player_entity).insert(WarpPending);
-            }
+        if warp_locked.fade_out_timer.just_finished() {
+            // Load the target level.
+            *level_select = LevelSelection::Iid(warp_locked.level_iid.clone());
 
-            continue;
+            // Add a pending warp.
+            commands.entity(entity).insert(WarpPending);
         }
 
-        // Get the material and fade it.
-        if let Some(material) = materials.get_mut(material) {
-            material.color.set_alpha(fade_out.timer.fraction());
+        // Set the darkness level
+        for mut settings in &mut palette_settings {
+            settings.darkness = darkness;
         }
     }
 }
 
 fn handle_pending_warp(mut commands: Commands,
                        mut player_query: Query<(Entity, &mut WorldGridCoords, &WarpLocked, &WarpPending), Without<WarpTargetTile>>,
-                       mut fade_out_query: Query<(Entity), With<WarpFadeOut>>,
-                       warp_target_query: Query<(&WarpTargetTile, &WorldGridCoords)>)
+                       warp_target_query: Query<(&WarpTargetTile, &WorldGridCoords)>,
+                       mut palette_settings: Query<&mut PaletteSwapPostProcessSettings>)
 {
     for (entity, mut player_grid_coords, warp_locked, warp_pending) in player_query.iter_mut() {
         println!("Looking for warp tile id: {}", warp_locked.warp_target_entity_iid.as_str());
@@ -196,9 +150,9 @@ fn handle_pending_warp(mut commands: Commands,
                     commands.entity(entity).remove::<WarpPending>();
                     commands.entity(entity).remove::<WarpLocked>();
 
-                    // Also remove any fade out entities
-                    for entity in &fade_out_query {
-                        commands.entity(entity).despawn();
+                    // Reset the fade out.
+                    for mut settings in &mut palette_settings {
+                        settings.darkness = 0;
                     }
 
                     println!("Found warp tile, warped to ({}, {}, {})", player_grid_coords.x, player_grid_coords.y, player_grid_coords.z);
@@ -529,7 +483,7 @@ impl Plugin for CharacterPlugin {
         app.register_ldtk_entity::<WarpTileBundle>("Warp");
         app.register_ldtk_entity::<WarpTargetTileBundle>("WarpTarget");
         app.add_systems(FixedUpdate, (warp_player, handle_pending_warp));
-        app.add_systems(FixedUpdate, (warp_fade_out, spawn_fade_out));
+        app.add_systems(FixedUpdate, (warp_fade_out));
 
         // Manage character movement.        
         app.register_ldtk_entity::<PlayerBundle>("Player");

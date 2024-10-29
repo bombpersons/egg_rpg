@@ -22,10 +22,8 @@
 @group(0) @binding(1) var texture_sampler: sampler;
 struct PostProcessSettings {
      // The four colours in our palette
-    colour_one: vec3<f32>,
-    colour_two: vec3<f32>,
-    colour_three: vec3<f32>,
-    colour_four: vec3<f32>,
+    colours: array<vec3<f32>, 4>,
+    darkness: i32,
 
 #ifdef SIXTEEN_BYTE_ALIGNMENT
     // WebGL2 structs must be 16 byte aligned.
@@ -34,18 +32,29 @@ struct PostProcessSettings {
 }
 @group(0) @binding(2) var<uniform> settings: PostProcessSettings;
 
+fn get_palette_colour(index: i32) -> vec3<f32> {
+    var darkness_mod = index + settings.darkness;
+    if darkness_mod >= 4 {
+        darkness_mod = 3;
+    } else if darkness_mod < 0 {
+        darkness_mod = 0;
+    }
+
+    return settings.colours[darkness_mod];
+}
+
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     // Determine which palette colour we are going to use
     let colour_r = textureSample(screen_texture, texture_sampler, in.uv).r;
     if colour_r > 0.75 {
-       return vec4<f32>(settings.colour_one, 1.0);
+       return vec4<f32>(get_palette_colour(0), 1.0);
     } else if colour_r > 0.3 {
-        return vec4<f32>(settings.colour_two, 1.0);
+        return vec4<f32>(get_palette_colour(1), 1.0);
     } else if colour_r > 0.1 {
-        return vec4<f32>(settings.colour_three, 1.0);
+        return vec4<f32>(get_palette_colour(2), 1.0);
     } else {
-        return vec4<f32>(settings.colour_four, 1.0);
+        return vec4<f32>(get_palette_colour(3), 1.0);
     }
 
     // fallback
