@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::{ecs::world, prelude::*, transform::components};
+use bevy::{ecs::world, prelude::*, sprite::{Material2d, MaterialMesh2dBundle}, transform::components};
 use bevy_ecs_tilemap::prelude::*;
 use bevy_ecs_ldtk::{assets::{InternalLevels, LdtkJsonWithMetadata}, prelude::*};
 
@@ -13,13 +13,13 @@ const ANIMATION_FRAME_TIME: f32 = MOVEMENT_TICK / 2.0;
 // to another location.
 #[derive(Clone, Debug, Component)]
 struct WarpTile {
-    level_iid: String,
-    entity_iid: String,
+    level_iid: Option<LevelIid>,
+    entity_iid: Option<EntityIid>,
 }
 
 impl Default for WarpTile {
     fn default() -> Self {
-        Self { level_iid: "".to_string(), entity_iid: "".to_string() }
+        Self { level_iid: None, entity_iid: None }
     }
 }
 
@@ -39,89 +39,171 @@ impl From<&EntityInstance> for WarpTile {
         let entity_reference = entity_instance.get_entity_ref_field("Target").expect("Warp should have a valid target!");
 
         Self {
-            level_iid: entity_reference.level_iid.to_string(),
-            entity_iid: entity_reference.entity_iid.to_string()
+            level_iid: Some(LevelIid::new(entity_reference.level_iid.to_string())),
+            entity_iid: Some(EntityIid::new(entity_reference.entity_iid.to_string()))
         }
     }
 }
 
+// How long do we fade out before actually warping?
+const WARP_FADE_OUT_TIME: Duration = Duration::from_millis(500);
+
+// Specifies that the player is locked and cannot be moved due to a pending warp.
+#[derive(Clone, Component)]
+struct WarpLocked {
+    level_iid: LevelIid,
+    warp_target_entity_iid: EntityIid
+}
+
+// Specifies that the player is waiting for the new level to be loaded so that they can be warped to their target.
+#[derive(Clone, Component)]
+struct WarpPending;
+
+// A timer so that we can fade out a rect on the screen whilst the player is locked in place.
+#[derive(Clone, Component)]
+struct WarpFadeOut {
+    timer: Timer
+}
+
+impl Default for WarpFadeOut {
+    fn default() -> Self {
+        Self {
+            timer: Timer::new(Duration::from_secs_f32(WARP_FADE_OUT_TIME.as_secs_f32()), TimerMode::Once)
+        }
+    }
+}
+
+// The actual rect that overlays everything whilst we fade out.
+#[derive(Clone, Default, Bundle)]
+struct WarpFadeOutBundle {
+    sprite: MaterialMesh2dBundle<ColorMaterial>,
+    warp_fade_out: WarpFadeOut
+}
+
 fn warp_player(mut commands: Commands,
-               mut level_select: ResMut<LevelSelection>, 
                mut tile_moved_event_reader: EventReader<TileMovedEvent>,
-               mut player_query: Query<(Entity, &Player, &WorldGridCoords), Without<WarpTile>>,
-               mut warp_tiles: Query<(&WarpTile, &WorldGridCoords), Without<Player>>) 
+               player_query: Query<(Entity, &Player, &WorldGridCoords), Without<WarpTile>>,
+               warp_tiles: Query<(&WarpTile, &WorldGridCoords)>) 
 {   
     // Only triggers when a tile moves from one tile to another.
     for tile_moved_event in tile_moved_event_reader.read() {
         // Find entity in our query. (only interested in potential player)
-        if let Ok((entity, player, world_grid_coords)) = player_query.get(tile_moved_event.entity) {
+        if let Ok((player_entity, _, world_grid_coords)) = player_query.get(tile_moved_event.entity) {
             for (warp_tile, tile_grid_coords) in &warp_tiles {
                 if world_grid_coords.x == tile_grid_coords.x && world_grid_coords.y == tile_grid_coords.y && world_grid_coords.z == tile_grid_coords.z {
-                    let level_to_load = warp_tile.level_iid.to_string();
-                    println!("Warping player to {}", level_to_load);
 
-                    // Warp, first load the level of the warp target.
-                    *level_select = LevelSelection::Iid(LevelIid::new(warp_tile.level_iid.to_string()));
-                    println!("Loaded level {:?}", *level_select);
-    
-                    // Add a pending warp component to the player so that we can handle the warp after the level loads.
-                    commands.entity(entity).insert(
-                        WarpPending {
-                            warp_target_entity_iid: warp_tile.entity_iid.to_string()
+                    // If the warp tile has a valid level.
+                    if let Some(level_iid) = &warp_tile.level_iid {
+                        println!("Attempting to warp player to new level {}", level_iid);
+
+                        // Is the entity id of the warp target valid?
+                        if let Some(warp_target_entity_iid) = &warp_tile.entity_iid {
+
+                            // Warp lock the player.
+                            commands.entity(player_entity).insert(WarpLocked {
+                                level_iid: level_iid.clone(),
+                                warp_target_entity_iid: warp_target_entity_iid.clone(),
+                            });
+
                         }
-                    );
+                    }
                 }
             };
         }
     }
+}
 
-    // for (entity, player, grid_coords) in player_query.iter_mut() {
-    //     // look for a warp tile were we are.
-    //     warp_tiles.for_each(|(warp_tile, tile_grid_coords)| {
-    //         if grid_coords.x == tile_grid_coords.x && grid_coords.y == tile_grid_coords.y {
-    //             let level_to_load = warp_tile.level_iid.to_string();
-    //             println!("Warping player to {}", level_to_load);
+// Spawn the fade out rect in response to the player getting warp locked.
+fn spawn_fade_out(mut commands: Commands,
+                  mut player_query: Query<(Entity, &Player, &GlobalTransform), Added<WarpLocked>>,
+                  mut meshes: ResMut<Assets<Mesh>>,
+                  mut materials: ResMut<Assets<ColorMaterial>>) {
 
-    //             // Warp, first load the level of the warp target.
-    //             *level_select = LevelSelection::Iid(warp_tile.level_iid.to_string());
-    //             println!("Loaded level {:?}", *level_select);
+    // If a warp was requested...
+    if let Ok((entity, player, global_transform)) = player_query.get_single() {
+        // Add a quad over the whole screen that fades to black. With the palette post processing
+        // this should fade in step until the 4 colours all turn to black 
+        // Then when it's fully black, we'll deal with the pending warp and actually teleport.
+        commands.spawn(WarpFadeOutBundle {
+            sprite: MaterialMesh2dBundle {
+                mesh: meshes.add(Rectangle::default()).into(),
+                transform: Transform::default().with_scale(Vec3::splat(2000.0)).with_translation(global_transform.translation()),
+                material: materials.add(Color::srgba(0.0, 0.0, 0.0, 1.0)),
+                ..Default::default()
+            },
+            warp_fade_out: WarpFadeOut::default()
+        });
+    }
+}
 
-    //             // Add a pending warp component to the player so that we can handle the warp after the level loads.
-    //             commands.entity(entity).insert(
-    //                 WarpPending {
-    //                     warp_target_entity_iid: warp_tile.entity_iid.to_string()
-    //                 }
-    //             );
-    //         }
-    //     });
-    // }
+// Slowly fade out the rect. Once we've faded out completely, actually warp the player.
+fn warp_fade_out(time: Res<Time>, 
+                 mut commands: Commands,
+                 mut level_select: ResMut<LevelSelection>, 
+                 mut fade_out_query: Query<(&mut WarpFadeOut, &Handle<ColorMaterial>)>,
+                 player_query: Query<(Entity, &WarpLocked), With<Player>>,
+                 mut materials: ResMut<Assets<ColorMaterial>>) {
+
+    // Map the time left on the fade out to the transparency of the color of the material.
+    for (mut fade_out, material) in &mut fade_out_query {
+        // Reduce our timer.
+        fade_out.timer.tick(time.delta());
+        if fade_out.timer.just_finished() {
+            // Actually warp the player.
+            if let Ok((player_entity, warp_locked)) = player_query.get_single() {
+
+                // Load the target level.
+                *level_select = LevelSelection::Iid(warp_locked.level_iid.clone());
+
+                // Add a pending warp.
+                commands.entity(player_entity).insert(WarpPending);
+            }
+
+            continue;
+        }
+
+        // Get the material and fade it.
+        if let Some(material) = materials.get_mut(material) {
+            material.color.set_alpha(fade_out.timer.fraction());
+        }
+    }
 }
 
 fn handle_pending_warp(mut commands: Commands,
-                       mut player_query: Query<(Entity, &Player, &mut WorldGridCoords, &WarpPending), Without<WarpTargetTile>>,
-                       warp_target_query: Query<(&WarpTargetTile, &WorldGridCoords), Without<Player>>)
+                       mut player_query: Query<(Entity, &mut WorldGridCoords, &WarpLocked, &WarpPending), Without<WarpTargetTile>>,
+                       mut fade_out_query: Query<(Entity), With<WarpFadeOut>>,
+                       warp_target_query: Query<(&WarpTargetTile, &WorldGridCoords)>)
 {
-    for (entity, player, mut player_grid_coords, warp_pending) in player_query.iter_mut() {
-        println!("Looking for warp tile id: {}", warp_pending.warp_target_entity_iid);
+    for (entity, mut player_grid_coords, warp_locked, warp_pending) in player_query.iter_mut() {
+        println!("Looking for warp tile id: {}", warp_locked.warp_target_entity_iid.as_str());
 
         // Try and find the entity that we are warping to.
         for (warp_target_tile, world_grid_coords) in &warp_target_query {
-            println!("Found Warp tile with entity id: {}", warp_target_tile.iid);
+            if let Some(target_entity_iid) = &warp_target_tile.entity_iid {
 
-            if warp_target_tile.iid == warp_pending.warp_target_entity_iid {
-                // Now we need to get the global grid coords for the warp target
-                
-                println!("world coords for warp target: {}, {}, {}", world_grid_coords.x, world_grid_coords.y, world_grid_coords.z);
+                if *target_entity_iid == warp_locked.warp_target_entity_iid {
+                    // Now we need to get the global grid coords for the warp target
+                    println!("Found Warp tile with entity id: {}", target_entity_iid.as_str());
 
-                // WARPING!
-                player_grid_coords.x = world_grid_coords.x;
-                player_grid_coords.y = world_grid_coords.y;
-                player_grid_coords.z = world_grid_coords.z;
+                    println!("world coords for warp target: {}, {}, {}", world_grid_coords.x, world_grid_coords.y, world_grid_coords.z);
 
-                // Remove the pending warp component.
-                commands.entity(entity).remove::<WarpPending>();
+                    // WARPING!
+                    player_grid_coords.x = world_grid_coords.x;
+                    player_grid_coords.y = world_grid_coords.y;
+                    player_grid_coords.z = world_grid_coords.z;
 
-                println!("Found warp tile, warped to ({}, {}, {})", player_grid_coords.x, player_grid_coords.y, player_grid_coords.z);
+                    // Remove the pending warp component and locked component.
+                    commands.entity(entity).remove::<WarpPending>();
+                    commands.entity(entity).remove::<WarpLocked>();
+
+                    // Also remove any fade out entities
+                    for entity in &fade_out_query {
+                        commands.entity(entity).despawn();
+                    }
+
+                    println!("Found warp tile, warped to ({}, {}, {})", player_grid_coords.x, player_grid_coords.y, player_grid_coords.z);
+                }
+
             }
         };
     }
@@ -129,13 +211,13 @@ fn handle_pending_warp(mut commands: Commands,
 
 #[derive(Clone, Debug, Component)]
 struct WarpTargetTile {
-    iid: String
+    entity_iid: Option<EntityIid>,
 }
 
 impl Default for WarpTargetTile {
     fn default() -> Self {
         Self {
-            iid: "".to_string()
+            entity_iid: None
         }
     }
 }
@@ -153,15 +235,11 @@ struct WarpTargetTileBundle {
 impl From<&EntityInstance> for WarpTargetTile {
     fn from(entity_instance: &EntityInstance) -> Self {
         println!("Warp Target Tile: {:?}", entity_instance);
+
         Self {
-            iid: entity_instance.iid.to_string()
+            entity_iid: Some(EntityIid::new(entity_instance.iid.clone()))
         }
     }
-}
-
-#[derive(Clone, Debug, Component)]
-struct WarpPending {
-    warp_target_entity_iid: String,
 }
 
 // Makes an entity locked to the tile grid.
@@ -451,6 +529,7 @@ impl Plugin for CharacterPlugin {
         app.register_ldtk_entity::<WarpTileBundle>("Warp");
         app.register_ldtk_entity::<WarpTargetTileBundle>("WarpTarget");
         app.add_systems(FixedUpdate, (warp_player, handle_pending_warp));
+        app.add_systems(FixedUpdate, (warp_fade_out, spawn_fade_out));
 
         // Manage character movement.        
         app.register_ldtk_entity::<PlayerBundle>("Player");
@@ -458,6 +537,7 @@ impl Plugin for CharacterPlugin {
         app.add_systems(FixedUpdate, (tile_movement_tick,
                                                         tile_movement_lerp,
                                                         walk_anim_control));
+
         app.add_event::<TileMovedEvent>();
     }
 }
