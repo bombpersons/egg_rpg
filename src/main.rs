@@ -7,6 +7,7 @@ use bevy_ecs_ldtk::prelude::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use palette::PalettePlugin;
 
+mod warp;
 mod palette;
 mod collision;
 mod camera;
@@ -80,6 +81,7 @@ fn main() {
         .add_plugins(collision::CollisionPlugin)
         .add_plugins(camera::PlayerFollowCameraPlugin)
         .add_plugins(character::CharacterPlugin)
+        .add_plugins(warp::WarpPlugin)
         .add_plugins(PalettePlugin)
 
         .insert_resource(Time::<Fixed>::from_seconds(FIXED_TIMESTEP))
