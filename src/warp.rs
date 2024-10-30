@@ -36,89 +36,82 @@ fn build_warp_cache(mut warp_cache: ResMut<WarpCache>,
                     ldtk_project_assets: Res<Assets<LdtkProject>>,
                     ldtk_project_entities: Query<&Handle<LdtkProject>>) {
 
-    warp_cache.warp_targets.clear();
-    warp_cache.warp_targets.clear();
-
     // Get the ldtk project data.
-    if let Some(ldtk_project) = ldtk_project_assets.get(ldtk_project_entities.single()) {
+    let ldtk_project = ldtk_project_assets.get(ldtk_project_entities.single()).expect("ldtk project should be loaded before track_level system runs.");
 
-        // The warp tiles and targets should be stored in the table of contents, so we can get 
-        // all of the in the entire world before any levels are loaded.
-        // Cache this data in our own resource so we can access it easily.
-        for entry in &ldtk_project.json_data().toc {
-            if entry.identifier == "Warp" {
-                for instance in &entry.instances_data {
+    // The warp tiles and targets should be stored in the table of contents, so we can get 
+    // all of the in the entire world before any levels are loaded.
+    // Cache this data in our own resource so we can access it easily.
+    for entry in &ldtk_project.json_data().toc {
+        if entry.identifier == "Warp" {
+            for instance in &entry.instances_data {
 
-                    // Get the z coord from the level it belongs to.
-                    let mut z = 0;
-                    for level in &ldtk_project.json_data().levels {
-                        if level.iid == instance.iids.level_iid {
-                            z = level.world_depth;
-                        }
-                    }
-
-                    // Convert the world position of the instance to worldgridcoords.
-                    let world_grid_coords = WorldGridCoords {
-                        x: (instance.world_x + instance.wid_px/2) / TILE_GRID_SIZE.x,
-                        y: -(instance.world_y + instance.hei_px/2) / TILE_GRID_SIZE.y,
-                        z: z
-                    };
-
-                    // Get the target this one points to.
-                    if let Some(serde_json::Value::Object(fields)) = &instance.fields {
-                        if let Some(serde_json::Value::Object(target)) = fields.get("Target") {
-
-                            // Entity iid.
-                            let entity_iid = if let Some(serde_json::Value::String(entity_iid)) = target.get("entityIid") {
-                                Some(EntityIid::new(entity_iid.clone()))
-                            } else {
-                                None
-                            };
-
-                            // Level iid
-                            let level_iid = if let Some(serde_json::Value::String(level_iid)) = target.get("levelIid") {
-                                Some(LevelIid::new(level_iid.clone()))
-                            } else {
-                                None
-                            };
-
-                            // If we have both... add the item to our cache.
-                            if let (Some(entity_iid), Some(level_iid)) = (entity_iid, level_iid) {
-                                warp_cache.warp_tiles.insert(world_grid_coords, WarpTarget {
-                                    entity_iid,
-                                    level_iid
-                                });
-                            }
-                        }
+                // Get the z coord from the level it belongs to.
+                let mut z = 0;
+                for level in &ldtk_project.json_data().levels {
+                    if level.iid == instance.iids.level_iid {
+                        z = level.world_depth;
                     }
                 }
-            }
 
-            if entry.identifier == "WarpTarget" {
-                for instance in &entry.instances_data {
-                    
-                    // Get the z coord from the level it belongs to.
-                    let mut z = 0;
-                    for level in &ldtk_project.json_data().levels {
-                        if level.iid == instance.iids.level_iid {
-                            z = level.world_depth;
+                // Convert the world position of the instance to worldgridcoords.
+                let world_grid_coords = WorldGridCoords {
+                    x: (instance.world_x + instance.wid_px/2) / TILE_GRID_SIZE.x,
+                    y: -(instance.world_y + instance.hei_px/2) / TILE_GRID_SIZE.y,
+                    z: z
+                };
+
+                // Get the target this one points to.
+                if let Some(serde_json::Value::Object(fields)) = &instance.fields {
+                    if let Some(serde_json::Value::Object(target)) = fields.get("Target") {
+
+                        // Entity iid.
+                        let entity_iid = if let Some(serde_json::Value::String(entity_iid)) = target.get("entityIid") {
+                            Some(EntityIid::new(entity_iid.clone()))
+                        } else {
+                            None
+                        };
+
+                        // Level iid
+                        let level_iid = if let Some(serde_json::Value::String(level_iid)) = target.get("levelIid") {
+                            Some(LevelIid::new(level_iid.clone()))
+                        } else {
+                            None
+                        };
+
+                        // If we have both... add the item to our cache.
+                        if let (Some(entity_iid), Some(level_iid)) = (entity_iid, level_iid) {
+                            warp_cache.warp_tiles.insert(world_grid_coords, WarpTarget {
+                                entity_iid,
+                                level_iid
+                            });
                         }
                     }
-
-                    // Convert the world position of the instance to worldgridcoords.
-                    let world_grid_coords = WorldGridCoords {
-                        x: (instance.world_x + instance.wid_px/2) / TILE_GRID_SIZE.x,
-                        y: -(instance.world_y + instance.hei_px/2) / TILE_GRID_SIZE.y,
-                        z: z
-                    };
-
-                    warp_cache.warp_targets.insert(EntityIid::new(instance.iids.entity_iid.clone()), world_grid_coords);
                 }
             }
         }
 
-        println!("{:?}", warp_cache);
+        if entry.identifier == "WarpTarget" {
+            for instance in &entry.instances_data {
+                
+                // Get the z coord from the level it belongs to.
+                let mut z = 0;
+                for level in &ldtk_project.json_data().levels {
+                    if level.iid == instance.iids.level_iid {
+                        z = level.world_depth;
+                    }
+                }
 
+                // Convert the world position of the instance to worldgridcoords.
+                let world_grid_coords = WorldGridCoords {
+                    x: (instance.world_x + instance.wid_px/2) / TILE_GRID_SIZE.x,
+                    y: -(instance.world_y + instance.hei_px/2) / TILE_GRID_SIZE.y,
+                    z: z
+                };
+
+                warp_cache.warp_targets.insert(EntityIid::new(instance.iids.entity_iid.clone()), world_grid_coords);
+            }
+        }
     }
 }
 
@@ -181,7 +174,6 @@ fn warp_fade_out(time: Res<Time>,
                 player_grid_coords.z = target_grid_coord.z;
 
                 // Remove the pending warp component and locked component.
-                commands.entity(entity).remove::<WarpPending>();
                 commands.entity(entity).remove::<WarpPending>();
 
                 // Reset the fade out.

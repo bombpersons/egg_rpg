@@ -33,12 +33,7 @@ struct PostProcessSettings {
 @group(0) @binding(2) var<uniform> settings: PostProcessSettings;
 
 fn get_palette_colour(index: i32) -> vec3<f32> {
-    var darkness_mod = index + settings.darkness;
-    if darkness_mod >= 4 {
-        darkness_mod = 3;
-    } else if darkness_mod < 0 {
-        darkness_mod = 0;
-    }
+    var darkness_mod = clamp(index + settings.darkness, 0, 3);
 
     return settings.colours[darkness_mod];
 }

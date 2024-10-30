@@ -10,6 +10,8 @@ use bevy_ecs_ldtk::app::LdtkEntity;
 use bevy_inspector_egui::egui::Grid;
 use ldtk::loaded_level::LoadedLevel;
 
+use crate::util;
+
 pub const TILE_GRID_SIZE: IVec2 = IVec2::new(16, 16);
 const BLOCKED_TILE_GRID_CELL: i32 = 1;
 
@@ -189,7 +191,10 @@ impl Plugin for CollisionPlugin {
         // The resource for the cache.
         app.init_resource::<BlockedTilesCache>();
 
-        // The system for keeping it up to date.
-        app.add_systems(Update, (world_grid_coords_added, track_level, build_blocked_tile_cache));
+        // These should only run if the ldtk project is available.
+        app.add_systems(FixedUpdate, world_grid_coords_added.run_if(util::run_if_ldtk_project_resource_available));
+        app.add_systems(FixedUpdate, build_blocked_tile_cache.run_if(util::run_if_ldtk_project_resource_available));
+
+        app.add_systems(FixedUpdate, track_level);
     }
 }
