@@ -252,32 +252,34 @@ fn animate_sprite(
     }
 }
 
-#[derive(Component)]
-pub struct Player {
-}
-
-impl Default for Player {
-    fn default() -> Self {
-        Self {}
-    }
-}
+#[derive(Default, Component)]
+pub struct Actor;
 
 #[derive(Bundle, Default, LdtkEntity)]
-pub struct PlayerBundle {
-    #[sprite_sheet_bundle("egg_stomp-Sheet.png", 16, 16, 16, 1, 0, 0, 0)]
-    pub spritesheet_bundle: LdtkSpriteSheetBundle,
+struct ActorBundle {
     pub anim_indices: AnimationIndices,
 
     pub anim_timer: AnimationTimer,
     pub tile_mover: TileMover,
     pub walk_anim: WalkAnim,
-    pub player: Player,
+}
+
+#[derive(Default, Component)]
+pub struct Player;
+
+#[derive(Bundle, Default, LdtkEntity)]
+pub struct PlayerBundle {
+    #[sprite_sheet_bundle("egg_stomp-Sheet.png", 16, 16, 16, 1, 0, 0, 0)]
+    pub spritesheet_bundle: LdtkSpriteSheetBundle,
+
+    actor_bundle: ActorBundle,
+    player: Player,
+
+    current_level: CurrentLevel,
 
     #[grid_coords]
     pub grid_coords: GridCoords,
     world_grid_coords_required: WorldGridCoordsRequired,
-
-    current_level: CurrentLevel,
 
     #[worldly]
     wordly: Worldly
@@ -287,8 +289,10 @@ pub struct CharacterPlugin;
 impl Plugin for CharacterPlugin {
     fn build(&self, app: &mut App) {
 
-        // Manage character movement.        
+        // The player
         app.register_ldtk_entity::<PlayerBundle>("Player");
+
+        // Manage character movement.        
         app.add_systems(FixedUpdate, (animate_sprite, move_player));
         app.add_systems(FixedUpdate, (tile_movement_tick,
                                                         tile_movement_lerp,

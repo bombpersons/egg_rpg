@@ -167,7 +167,7 @@ fn build_blocked_tile_cache(mut blocked_tiles_cache: ResMut<BlockedTilesCache>,
     
     // Collect all of the blocked tiles that currently exist.
     let mut blocked_tile_locations = HashSet::new();
-    for (world_grid_coords) in blocked_tiles.iter() {
+    for world_grid_coords in blocked_tiles.iter() {
         blocked_tile_locations.insert(*world_grid_coords);
     }
 
