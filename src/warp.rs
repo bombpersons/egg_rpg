@@ -145,9 +145,9 @@ fn warp_player(mut commands: Commands,
 fn warp_fade_out(time: Res<Time>, 
                  mut commands: Commands,
                  warp_cache: Res<WarpCache>,
-                 mut level_select: ResMut<LevelSelection>, 
                  mut player_query: Query<(Entity, &mut WorldGridCoords, &mut WarpPending), With<Player>>,
-                 mut palette_settings: Query<&mut PaletteSwapPostProcessSettings>) {
+                 mut palette_settings: Query<&mut PaletteSwapPostProcessSettings>,
+                 level_query: Query<&LevelIid>) {
 
     if let Ok((entity, mut player_grid_coords, mut warp_locked)) = player_query.get_single_mut() {
         // Reduce our timer.
@@ -158,7 +158,7 @@ fn warp_fade_out(time: Res<Time>,
 
         if warp_locked.fade_out_timer.just_finished() {
             // Load the target level.
-            *level_select = LevelSelection::Iid(warp_locked.target.level_iid.clone());
+            //*level_select = LevelSelection::Iid(warp_locked.target.level_iid.clone());
 
             // The warp target locations are already known since we
             // parsed the TOC in the ldtk file json data.
@@ -173,14 +173,6 @@ fn warp_fade_out(time: Res<Time>,
                 player_grid_coords.y = target_grid_coord.y;
                 player_grid_coords.z = target_grid_coord.z;
 
-                // Remove the pending warp component and locked component.
-                commands.entity(entity).remove::<WarpPending>();
-
-                // Reset the fade out.
-                for mut settings in &mut palette_settings {
-                    settings.darkness = 0;
-                }
-
                 println!("Found warp tile, warped to ({}, {}, {})", player_grid_coords.x, player_grid_coords.y, player_grid_coords.z);
             }
         }
@@ -189,6 +181,23 @@ fn warp_fade_out(time: Res<Time>,
         if !warp_locked.fade_out_timer.finished() {
             for mut settings in &mut palette_settings {
                 settings.darkness = darkness;
+            }
+        }
+
+        // If the timer is finished, we might be waiting for the level we're warping to, to load. 
+        // So let's check if it's loaded, and if it is then we can reset the darkness.
+        if warp_locked.fade_out_timer.finished() {
+
+            // Check if the target level is loaded.
+            for level_iid in &level_query {
+                if *level_iid == warp_locked.target.level_iid {
+                    
+                    // Okay it's loaded. Remove the pending warp component and reset our darkness.
+                    commands.entity(entity).remove::<WarpPending>();
+                    for mut settings in &mut palette_settings {
+                        settings.darkness = 0;
+                    }
+                }
             }
         }
     }

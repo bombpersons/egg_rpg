@@ -27,72 +27,6 @@ pub struct WorldGridCoords {
     pub z: i32 // Layer,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Component)]
-pub struct CurrentLevel {
-    pub level_iid: Option<LevelIid>
-}
-
-impl Default for CurrentLevel {
-    fn default() -> Self {
-        Self {
-            level_iid: None
-        }
-    }
-}
-
-// If an entity has a world grid coord component, then we can use that position to determine which level bounds it intersects
-// with! Then, other systems that need to know what level a wordly entity is located within can know easily.
-fn track_level(mut wordly_query: Query<(&WorldGridCoords, &GlobalTransform, &mut CurrentLevel), With<Worldly>>,
-              levels: Query<(&LevelIid, &GlobalTransform)>,
-              ldtk_projects: Query<&Handle<LdtkProject>>,
-              ldtk_project_assets: Res<Assets<LdtkProject>>) {
-    
-    // Get the ldtk project .
-    let ldtk_project = ldtk_project_assets.get(ldtk_projects.single()).expect("ldtk project should be loaded before track_level system runs.");
-
-    // For each worldy entity that we are keeping track of.
-    for (world_grid_coords, global_transform, mut current_level) in &mut wordly_query {
-
-        // The level we've chosen that intersects.
-        let mut selected_level = None;
-
-        // Go through each level and see which bounds we are contained within.
-        for (level_iid, level_transform) in levels.iter() {
-            let level = ldtk_project
-                .get_raw_level_by_iid(level_iid.get())
-                .expect("level should exist in only project");
-
-            let level_bounds = Rect {
-                min: Vec2::new(
-                    level_transform.translation().x,
-                    level_transform.translation().y,
-                ),
-                max: Vec2::new(
-                    level_transform.translation().x + level.px_wid as f32,
-                    level_transform.translation().y + level.px_hei as f32,
-                ),
-            };
-
-            // We're within the 2d bounds...
-            if level_bounds.contains(global_transform.translation().xy()) {
-
-                // Check if our z coordinate is the same?
-                if world_grid_coords.z == level.world_depth {
-
-                    // We are contained by this level bounds.
-                    selected_level = Some(level_iid.clone());
-
-                    // Stop looking for this entity.
-                    break;
-                }
-            }
-        }
-
-        // Set the level.
-        current_level.level_iid = selected_level
-    }
-}
-
 // A system that should set the world grid coords component to have correct world grid coordinates.
 fn world_grid_coords_added(mut commands: Commands,
                            mut world_grid_coords_query: Query<(Entity, &GridCoords, &Parent), Added<WorldGridCoordsRequired>>,
@@ -192,9 +126,6 @@ impl Plugin for CollisionPlugin {
         app.init_resource::<BlockedTilesCache>();
 
         // These should only run if the ldtk project is available.
-        app.add_systems(FixedUpdate, world_grid_coords_added.run_if(util::run_if_ldtk_project_resource_available));
-        app.add_systems(FixedUpdate, build_blocked_tile_cache.run_if(util::run_if_ldtk_project_resource_available));
-
-        app.add_systems(FixedUpdate, track_level);
+        app.add_systems(FixedUpdate, (world_grid_coords_added, build_blocked_tile_cache).run_if(util::run_if_ldtk_project_resource_available));
     }
 }

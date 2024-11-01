@@ -1,7 +1,9 @@
-use bevy::{app::{Plugin, Update}, asset::{Assets, Handle}, color::{palettes, Color, Srgba}, ecs::query::QuerySingleError, log::tracing_subscriber::layer, math::Vec3, prelude::{Bundle, Component, Entity, Parent, Query, Res, With, Without}};
+use std::{collections::HashMap, thread::current};
+
+use bevy::{app::{Plugin, Update}, asset::{Assets, Handle}, color::{palettes, Color, Srgba}, ecs::query::QuerySingleError, log::tracing_subscriber::layer, math::Vec3, prelude::{Added, Bundle, Component, Entity, Parent, Query, Res, ResMut, Resource, With, Without}};
 use bevy_ecs_ldtk::{app::LdtkEntityAppExt, assets::LdtkProject, prelude::LdtkFields, EntityInstance, LdtkEntity, LevelIid};
 
-use crate::{character::Player, collision::CurrentLevel, post_process::PaletteSwapPostProcessSettings};
+use crate::{character::Player, level_loading::CurrentLevel, post_process::PaletteSwapPostProcessSettings};
 
 // Represents a palette to be used.
 // There are 4 possible colors (like on the gameboy).
@@ -42,45 +44,64 @@ struct PaletteBundle {
     palette: Palette
 }
 
+#[derive(Resource, Debug, Default)]
+struct PaletteCache {
+    palettes: HashMap<LevelIid, Palette>
+}
+
+// When a new palette is added, we're going to add it to our cache.
+fn update_palette_cache(mut palette_cache: ResMut<PaletteCache>,
+                        palettes_added: Query<(&Parent, &Palette), Added<Palette>>,
+                        parent_query: Query<&Parent>,
+                        level_query: Query<&LevelIid>) {
+
+    // For each palette added, find the grandparent level and fill in our cache.
+    for (parent, palette) in &palettes_added {
+        if let Ok(level_parent) = parent_query.get(parent.get()) {
+            if let Ok(level_iid) = level_query.get(level_parent.get()) {
+
+                println!("Adding {:?}", palette);
+                
+                // Cool!
+                palette_cache.palettes.insert(level_iid.clone(), palette.clone());
+            }
+        }
+    }
+}
+
+
 // Update the palette swaping post processing to match whatever palette is in the level the player is in.
 fn check_palette(player_query: Query<&CurrentLevel, With<Player>>,
-                 palette_query: Query<(&Parent, &Palette)>,
-                 parent_query: Query<&Parent, Without<Palette>>,
+                 palette_cache: Res<PaletteCache>,
                  mut palette_settings_query: Query<&mut PaletteSwapPostProcessSettings>,
                  level_query: Query<&LevelIid>) {
     
-    match player_query.get_single() {
-        Ok(player_level) => {
-            if let Some(player_level_iid) = &player_level.level_iid {
-                // Awesome the player is in some level.
-                // Now we need to find the palette entity that's in this level.
-                for (parent, palette) in &palette_query {
-                    let layer_entity = parent.get();
-                    if let Ok(level_parent) = parent_query.get(layer_entity) {
-                        if let Ok(palette_level_iid) = level_query.get(level_parent.get()) {
+    // So we want to do this only when the players level is actually loaded,
+    // other wise we won't be able to get the palette data and even if we could,
+    // it would be too early to do so.
+    
+    // So we're going to get the current level, then check if it's loaded before doing anything.
+    if let Ok(current_level) = player_query.get_single() {
+        if let Some(current_level_iid) = &current_level.level_iid {
 
-                            // We have the level iid the palette is associated with, does it match?
-                            if player_level_iid == palette_level_iid {
+            // Is it loaded?
+            for level_iid in &level_query {
+                if level_iid == current_level_iid {
+                    // Okay it's loaded.
 
-                                // It matches, so switch over the colors to match this palette.
-                                if let Ok(mut palette_settings) = palette_settings_query.get_single_mut() {
-                                    for (index, colour) in palette.colours.iter().enumerate() {
-                                        let linear = colour.to_linear();
-                                        palette_settings.colours[index] = Vec3::new(linear.red, linear.green, linear.blue);
-                                    }
-                                }
+                    // Grab the palette for this level.
+                    if let Some(palette) = palette_cache.palettes.get(level_iid) {
+                        
+                        // Switch the palette.
+                        if let Ok(mut palette_settings) = palette_settings_query.get_single_mut() {
+                            for (index, colour) in palette.colours.iter().enumerate() {
+                                let linear = colour.to_linear();
+                                palette_settings.colours[index] = Vec3::new(linear.red, linear.green, linear.blue);
                             }
                         }
                     }
                 }
-
             }
-        },
-        Err(QuerySingleError::MultipleEntities(msg)) => {
-            println!("More than one player?");
-        },
-        Err(QuerySingleError::NoEntities(msg)) => {
-            println!("No player?");
         }
     }
 }
@@ -88,8 +109,10 @@ fn check_palette(player_query: Query<&CurrentLevel, With<Player>>,
 pub struct PalettePlugin;
 impl Plugin for PalettePlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
+        app.init_resource::<PaletteCache>();
+
         app.register_ldtk_entity::<PaletteBundle>("Palette");
         
-        app.add_systems(Update, (check_palette));
+        app.add_systems(Update, (update_palette_cache, check_palette));
     }
 }

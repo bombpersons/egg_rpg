@@ -4,7 +4,7 @@ use bevy::{ecs::world, prelude::*, sprite::{Material2d, MaterialMesh2dBundle}, t
 use bevy_ecs_tilemap::prelude::*;
 use bevy_ecs_ldtk::{assets::{InternalLevels, LdtkJsonWithMetadata}, prelude::*};
 
-use crate::{camera::PlayerFollowCameraBundle, collision::{self, BlockedTilesCache, CurrentLevel, WorldGridCoords, WorldGridCoordsRequired}, post_process::PaletteSwapPostProcessSettings};
+use crate::{camera::PlayerFollowCameraBundle, level_loading::CurrentLevel, collision::{self, BlockedTilesCache, WorldGridCoords, WorldGridCoordsRequired}, post_process::PaletteSwapPostProcessSettings};
 
 const MOVEMENT_TICK: f32 = 20.0 / 60.0;
 const ANIMATION_FRAME_TIME: f32 = MOVEMENT_TICK / 2.0;

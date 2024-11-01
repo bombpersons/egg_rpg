@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::time::Duration;
 
 use bevy::{prelude::*, reflect::erased_serde::__private::serde::__private::de, render::camera::Viewport};
@@ -12,6 +13,7 @@ mod palette;
 mod collision;
 mod camera;
 mod character;
+mod level_loading;
 mod util;
 mod post_process;
 
@@ -31,8 +33,10 @@ fn startup(
 
     commands.spawn(camera::PlayerFollowCameraBundle::default());
 
+    // First level to load.
     commands.spawn(LdtkWorldBundle {
         ldtk_handle: asset_server.load("world.ldtk"),
+        level_set: LevelSet::from_iids(["7ad44690-3b70-11ee-859e-e1ae46b9be7a"]),
         ..Default::default()
     });
 
@@ -74,10 +78,11 @@ fn main() {
         .add_systems(Startup, startup)
         .insert_resource(LdtkSettings {
             int_grid_rendering: IntGridRendering::Invisible,
-            level_spawn_behavior: LevelSpawnBehavior::UseWorldTranslation { load_level_neighbors: true },
+            level_spawn_behavior: LevelSpawnBehavior::UseWorldTranslation { load_level_neighbors: false },
             ..default()
         })
-        .insert_resource(LevelSelection::Indices(LevelIndices { level: 0, world: None }))
+        //.insert_resource(LevelSelection::Indices(LevelIndices { level: 0, world: None }))
+        .add_plugins(level_loading::LevelLoadingPlugin)
         .add_plugins(collision::CollisionPlugin)
         .add_plugins(camera::PlayerFollowCameraPlugin)
         .add_plugins(character::CharacterPlugin)
