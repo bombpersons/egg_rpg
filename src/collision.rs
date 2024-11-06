@@ -28,12 +28,12 @@ pub struct WorldGridCoords {
 }
 
 // A system that should set the world grid coords component to have correct world grid coordinates.
-fn world_grid_coords_added(mut commands: Commands,
-                           mut world_grid_coords_query: Query<(Entity, &GridCoords, &Parent), Added<WorldGridCoordsRequired>>,
-                           parent_query: Query<&Parent, Without<WorldGridCoordsRequired>>,
-                           level_query: Query<&LevelIid>,
-                           ldtk_project_entities: Query<&Handle<LdtkProject>>,
-                           ldtk_project_assets: Res<Assets<LdtkProject>>) {
+fn world_grid_coords_required(mut commands: Commands,
+                              mut world_grid_coords_query: Query<(Entity, &GridCoords, &Parent), Added<WorldGridCoordsRequired>>,
+                              parent_query: Query<&Parent, Without<WorldGridCoordsRequired>>,
+                              level_query: Query<&LevelIid>,
+                              ldtk_project_entities: Query<&Handle<LdtkProject>>,
+                              ldtk_project_assets: Res<Assets<LdtkProject>>) {
 
     // Get the ldtk project so that we can get the level data from it.
     let ldtk_project = ldtk_project_assets.get(ldtk_project_entities.single())
@@ -68,25 +68,18 @@ fn world_grid_coords_added(mut commands: Commands,
 
                 // Remove the old component
                 commands.entity(entity).remove::<WorldGridCoordsRequired>();
-
-                //println!("Blocked tile at: {}, {}, {}", world_grid_coords.x, world_grid_coords.y, world_grid_coords.z);    
             }
         }
     }
 }
 
-// A tile that can't be walked through.
-#[derive(Clone, Debug, Component)]
-struct BlockedTile;
-impl Default for BlockedTile {
-    fn default() -> Self {
-        Self
-    }
-}
+// An entity that can't be walked through.
+#[derive(Clone, Debug, Default, Component)]
+pub struct Blocking; 
 
 #[derive(Clone, Debug, Default, Bundle, LdtkIntCell)]
 pub struct BlockedTileBundle {
-    blocked_tile: BlockedTile,
+    blocked_tile: Blocking,
     world_grid_coords_required: WorldGridCoordsRequired
 }
 
@@ -99,7 +92,7 @@ pub struct BlockedTilesCache {
 
 // Whenever a level is loaded, then rebuild our cache.
 fn build_blocked_tile_cache(mut blocked_tiles_cache: ResMut<BlockedTilesCache>,
-                            blocked_tiles: Query<&WorldGridCoords, With<BlockedTile>>) {
+                            blocked_tiles: Query<&WorldGridCoords, With<Blocking>>) {
     
     // Collect all of the blocked tiles that currently exist.
     let mut blocked_tile_locations = HashSet::new();
@@ -119,13 +112,12 @@ fn build_blocked_tile_cache(mut blocked_tiles_cache: ResMut<BlockedTilesCache>,
 pub struct CollisionPlugin;
 impl Plugin for CollisionPlugin {
     fn build(&self, app: &mut App) {
-        // Register blocked tiles to spawn based on the int cell value (1)
         app.register_ldtk_int_cell::<BlockedTileBundle>(BLOCKED_TILE_GRID_CELL);
-
+            
         // The resource for the cache.
         app.init_resource::<BlockedTilesCache>();
 
         // These should only run if the ldtk project is available.
-        app.add_systems(FixedUpdate, (world_grid_coords_added, build_blocked_tile_cache).run_if(util::run_if_ldtk_project_resource_available));
+        app.add_systems(FixedUpdate, (world_grid_coords_required, build_blocked_tile_cache).run_if(util::run_if_ldtk_project_resource_available));
     }
 }

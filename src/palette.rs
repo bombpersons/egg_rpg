@@ -3,7 +3,7 @@ use std::{collections::HashMap, thread::current};
 use bevy::{app::{Plugin, Update}, asset::{Assets, Handle}, color::{palettes, Color, Srgba}, ecs::query::QuerySingleError, log::tracing_subscriber::layer, math::Vec3, prelude::{Added, Bundle, Component, Entity, Parent, Query, Res, ResMut, Resource, With, Without}};
 use bevy_ecs_ldtk::{app::LdtkEntityAppExt, assets::LdtkProject, prelude::LdtkFields, EntityInstance, LdtkEntity, LevelIid};
 
-use crate::{character::Player, level_loading::CurrentLevel, post_process::PaletteSwapPostProcessSettings};
+use crate::{character::Player, level_loading::{CurrentLevel, CurrentLevelChangedEvent}, post_process::PaletteSwapPostProcessSettings};
 
 // Represents a palette to be used.
 // There are 4 possible colors (like on the gameboy).
@@ -60,7 +60,7 @@ fn update_palette_cache(mut palette_cache: ResMut<PaletteCache>,
         if let Ok(level_parent) = parent_query.get(parent.get()) {
             if let Ok(level_iid) = level_query.get(level_parent.get()) {
 
-                println!("Adding {:?}", palette);
+                println!("Adding {:?} for {:?}", palette, level_iid);
                 
                 // Cool!
                 palette_cache.palettes.insert(level_iid.clone(), palette.clone());
@@ -83,7 +83,7 @@ fn check_palette(player_query: Query<&CurrentLevel, With<Player>>,
     // So we're going to get the current level, then check if it's loaded before doing anything.
     if let Ok(current_level) = player_query.get_single() {
         if let Some(current_level_iid) = &current_level.level_iid {
-
+            
             // Is it loaded?
             for level_iid in &level_query {
                 if level_iid == current_level_iid {

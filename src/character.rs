@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use bevy::{ecs::world, prelude::*, sprite::{Material2d, MaterialMesh2dBundle}, transform::components};
+use bevy::{ecs::world, prelude::*, scene::ron::de, sprite::{Material2d, MaterialMesh2dBundle}, transform::components};
 use bevy_ecs_tilemap::prelude::*;
 use bevy_ecs_ldtk::{assets::{InternalLevels, LdtkJsonWithMetadata}, prelude::*};
 
-use crate::{camera::PlayerFollowCameraBundle, level_loading::CurrentLevel, collision::{self, BlockedTilesCache, WorldGridCoords, WorldGridCoordsRequired}, post_process::PaletteSwapPostProcessSettings};
+use crate::{camera::PlayerFollowCameraBundle, collision::{self, BlockedTilesCache, Blocking, WorldGridCoords, WorldGridCoordsRequired}, level_loading::CurrentLevel, post_process::PaletteSwapPostProcessSettings};
 
 const MOVEMENT_TICK: f32 = 20.0 / 60.0;
 const ANIMATION_FRAME_TIME: f32 = MOVEMENT_TICK / 2.0;
@@ -102,6 +102,15 @@ fn tile_movement_tick(time: Res<Time>, blocked_tile_cache: Res<BlockedTilesCache
                     z: world_grid_coords.z
                 };
 
+                // Store the direction we are facing.
+                tile_mover.facing_dir = match tile_mover.want_move_dir {
+                    MoveDir::Up => FacingDir::Up,
+                    MoveDir::Down => FacingDir::Down,
+                    MoveDir::Left => FacingDir::Left,
+                    MoveDir::Right => FacingDir::Right,
+                    MoveDir::NotMoving => tile_mover.facing_dir
+                };
+
                 // Determine whether or not we can move into that space.
                 if (blocked_tile_cache.blocked_tile_locations.contains(&position_to_move_to)) {
                     continue;
@@ -118,15 +127,6 @@ fn tile_movement_tick(time: Res<Time>, blocked_tile_cache: Res<BlockedTilesCache
 
                 // Store the direction we are moving.
                 tile_mover.moving_dir = tile_mover.want_move_dir;
-
-                // Store the direction we are facing.
-                tile_mover.facing_dir = match tile_mover.want_move_dir {
-                    MoveDir::Up => FacingDir::Up,
-                    MoveDir::Down => FacingDir::Down,
-                    MoveDir::Left => FacingDir::Left,
-                    MoveDir::Right => FacingDir::Right,
-                    MoveDir::NotMoving => tile_mover.facing_dir
-                };
             }
 
         }
@@ -255,42 +255,100 @@ fn animate_sprite(
 #[derive(Default, Component)]
 pub struct Actor;
 
-#[derive(Bundle, Default, LdtkEntity)]
+#[derive(Bundle, Default)]
 struct ActorBundle {
+    pub spritesheet_bundle: LdtkSpriteSheetBundle,
     pub anim_indices: AnimationIndices,
 
     pub anim_timer: AnimationTimer,
     pub tile_mover: TileMover,
     pub walk_anim: WalkAnim,
+
+    pub grid_coords: GridCoords,
+    world_grid_coords_required: WorldGridCoordsRequired,
+
+    blocking: Blocking
+}
+
+impl LdtkEntity for ActorBundle {
+    fn bundle_entity(entity_instance: &EntityInstance,
+                     layer_instance: &LayerInstance,
+                     tileset: Option<&Handle<Image>>,
+                     tileset_definition: Option<&TilesetDefinition>,
+                     asset_server: &AssetServer,
+                     texture_atlases: &mut Assets<TextureAtlasLayout>) -> Self {
+        
+        println!("SPAWNING ACTOR");
+
+        // Get the spritesheet filename.
+        let spritesheet_path = entity_instance.get_file_path_field("Spritesheet").expect("Actor or Player should have a Spritesheet!");
+
+        // Load/Get the spritesheet from our assets.
+        let spritesheet_texture = asset_server.load(spritesheet_path);
+
+        // Layout for the texture atlas
+        let spritesheet_layout = TextureAtlasLayout::from_grid(UVec2::splat(16), 16, 1, None, None);
+        let spritesheet_texture_atlas_layout = texture_atlases.add(spritesheet_layout);
+
+        // Spawn the actor / player entity.
+        ActorBundle {
+            // The spritesheet and animation components.
+            spritesheet_bundle: LdtkSpriteSheetBundle {
+                sprite_bundle: SpriteBundle {
+                    transform: Transform::default(),
+                    texture: spritesheet_texture.clone(),
+                    ..default()
+                },
+                texture_atlas: TextureAtlas {
+                    layout: spritesheet_texture_atlas_layout,
+                    index: 0
+                }
+            },
+            grid_coords: GridCoords::from_entity_info(entity_instance, layer_instance),
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Default, Component)]
 pub struct Player;
 
-#[derive(Bundle, Default, LdtkEntity)]
+#[derive(Bundle, Default)]
 pub struct PlayerBundle {
-    #[sprite_sheet_bundle("egg_stomp-Sheet.png", 16, 16, 16, 1, 0, 0, 0)]
-    pub spritesheet_bundle: LdtkSpriteSheetBundle,
-
     actor_bundle: ActorBundle,
-    player: Player,
 
+    player: Player,
     current_level: CurrentLevel,
 
-    #[grid_coords]
-    pub grid_coords: GridCoords,
-    world_grid_coords_required: WorldGridCoordsRequired,
+    worldly: Worldly
+}
 
-    #[worldly]
-    wordly: Worldly
+impl LdtkEntity for PlayerBundle {
+fn bundle_entity(entity_instance: &EntityInstance,
+                 layer_instance: &LayerInstance,
+                 tileset: Option<&Handle<Image>>,
+                 tileset_definition: Option<&TilesetDefinition>,
+                 asset_server: &AssetServer,
+                 texture_atlases: &mut Assets<TextureAtlasLayout>) -> Self {
+    
+        PlayerBundle {
+            actor_bundle: ActorBundle::bundle_entity(entity_instance, layer_instance, tileset, tileset_definition, asset_server, texture_atlases),
+            worldly: Worldly::from_entity_info(entity_instance),
+            ..Default::default()
+        }
+    }
 }
 
 pub struct CharacterPlugin;
 impl Plugin for CharacterPlugin {
     fn build(&self, app: &mut App) {
 
-        // The player
+        // Register the player and actor entities.
+        app.register_ldtk_entity::<ActorBundle>("Actor");
         app.register_ldtk_entity::<PlayerBundle>("Player");
+
+        // Actor creation
+        //app.add_systems(FixedUpdate, actor_added);
 
         // Manage character movement.        
         app.add_systems(FixedUpdate, (animate_sprite, move_player));
