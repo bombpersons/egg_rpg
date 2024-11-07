@@ -831,9 +831,9 @@
 							"height": 16,
 							"defUid": 23,
 							"px": [128,144],
-							"fieldInstances": [{ "__identifier": "Spritesheet", "__type": "FilePath", "__value": "egg_stomp-Sheet.png", "__tile": null, "defUid": 25, "realEditorValues": [{
+							"fieldInstances": [{ "__identifier": "Spritesheet", "__type": "FilePath", "__value": "egg_vilager.png", "__tile": null, "defUid": 25, "realEditorValues": [{
 								"id": "V_String",
-								"params": ["egg_stomp-Sheet.png"]
+								"params": ["egg_vilager.png"]
 							}] }],
 							"__worldX": 128,
 							"__worldY": -240
