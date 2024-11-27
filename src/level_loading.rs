@@ -9,7 +9,7 @@
 
 use std::{collections::{HashMap, HashSet}, thread::current};
 
-use bevy::{app::{FixedUpdate, Plugin}, asset::{Assets, Handle}, log::Level, math::{Rect, Vec2, Vec3Swizzles}, prelude::{run_once, Added, Component, Event, EventReader, EventWriter, GlobalTransform, IntoSystemConfigs, Query, Res, ResMut, Resource, With}};
+use bevy::{app::{FixedUpdate, Plugin}, asset::{Assets, Handle}, log::Level, math::{Rect, Vec2, Vec3Swizzles}, prelude::{run_once, Added, Commands, Component, Entity, Event, EventReader, EventWriter, GlobalTransform, IntoSystemConfigs, Query, Res, ResMut, Resource, With}};
 use bevy_ecs_ldtk::{assets::{LdtkProject, LevelMetadataAccessor}, EntityIid, LevelEvent, LevelIid, LevelSet, Worldly};
 
 use crate::{character::Player, collision::WorldGridCoords, util::run_if_ldtk_project_resource_available};
@@ -28,6 +28,9 @@ impl Default for CurrentLevel {
     }
 }
 
+#[derive(Component)]
+pub struct CurrentLevelLoading;
+
 #[derive(Event)]
 pub enum CurrentLevelChangedEvent {
     Changed(EntityIid, Option<LevelIid>, Option<LevelIid>),
@@ -36,8 +39,10 @@ pub enum CurrentLevelChangedEvent {
 
 // If an entity has a world grid coord component, then we can use that position to determine which level bounds it intersects
 // with! Then, other systems that need to know what level a wordly entity is located within can know easily.
-fn track_level(mut wordly_query: Query<(&EntityIid, &WorldGridCoords, &GlobalTransform, &mut CurrentLevel)>,
+fn track_level(mut commands: Commands,
+               mut wordly_query: Query<(Entity, &EntityIid, &WorldGridCoords, &GlobalTransform, &mut CurrentLevel)>,
                mut current_level_event_writer: EventWriter<CurrentLevelChangedEvent>,
+               level_query: Query<&LevelIid>,
                ldtk_projects: Query<&Handle<LdtkProject>>,
                ldtk_project_assets: Res<Assets<LdtkProject>>) {
     
@@ -45,7 +50,7 @@ fn track_level(mut wordly_query: Query<(&EntityIid, &WorldGridCoords, &GlobalTra
     let ldtk_project = ldtk_project_assets.get(ldtk_projects.single()).expect("ldtk project should be loaded before track_level system runs.");
 
     // For each worldy entity that we are keeping track of.
-    for (entity_iid, world_grid_coords, global_transform, mut current_level) in &mut wordly_query {
+    for (entity, entity_iid, world_grid_coords, global_transform, mut current_level) in &mut wordly_query {
 
         // The level we've chosen that intersects.
         let mut selected_level = None;
@@ -81,15 +86,38 @@ fn track_level(mut wordly_query: Query<(&EntityIid, &WorldGridCoords, &GlobalTra
         // If the level changed, then write an event for that changed.
         // Other systems might find this useful.
         if current_level.level_iid != selected_level {
+
+            // Level changed.
             current_level_event_writer.send(CurrentLevelChangedEvent::Changed(
                 entity_iid.clone(),
                 current_level.level_iid.clone(),
                 selected_level.clone()
             ));
 
-            // Set the level.
-            current_level.level_iid = selected_level
+            // Is the new level already loaded? This will often be the case
+            // if the player is moving to a neighbouring level.
+            let mut loaded = false;
+            if let Some(selected_level) = &selected_level {
+                for level in &level_query {
+                    if level == selected_level {
+                        loaded = true;
+                    }
+                }
+
+                if loaded == true {
+                    current_level_event_writer.send(CurrentLevelChangedEvent::ChangedAndLoaded(
+                        entity_iid.clone(),
+                        selected_level.clone()
+                    ));
+                } else {
+                    // It's going to be loaded eventually, add a pending component.
+                    commands.entity(entity).insert(CurrentLevelLoading);
+                }
+            }
         }
+
+        // Set the level.
+        current_level.level_iid = selected_level;
     }
 }
 
@@ -171,6 +199,30 @@ fn load_levels(neighbours_cache: Res<LevelNeighboursCache>,
     }
 }
 
+fn check_levels_loaded(mut commands: Commands,
+                       current_level_query: Query<(Entity, &EntityIid, &CurrentLevel), With<CurrentLevelLoading>>,
+                       level_query: Query<&LevelIid, Added<LevelIid>>,
+                       mut current_level_event_writer: EventWriter<CurrentLevelChangedEvent>) {
+    for (entity, entity_iid, current_level) in &current_level_query {
+        if let Some(current_level_iid) = &current_level.level_iid {
+            // Check if the level is loaded?
+            for level_iid in &level_query {
+                if current_level_iid == level_iid {
+                    // Cool it's loaded!
+                    // Send a message conveying that fact, and remove the CurrentLevelLoading component.
+                    commands.entity(entity).remove::<CurrentLevelLoading>();
+
+                    // Send the message.
+                    current_level_event_writer.send(CurrentLevelChangedEvent::ChangedAndLoaded(
+                        entity_iid.clone(),
+                        level_iid.clone()
+                    ));
+                }
+            }
+        }
+    }
+}
+
 pub struct LevelLoadingPlugin;
 impl Plugin for LevelLoadingPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
@@ -185,6 +237,6 @@ impl Plugin for LevelLoadingPlugin {
 
         // Level tracking and level loading.
         app.add_systems(FixedUpdate, track_level.run_if(run_if_ldtk_project_resource_available));
-        app.add_systems(FixedUpdate, load_levels);
+        app.add_systems(FixedUpdate, (load_levels, check_levels_loaded));
     }
 }

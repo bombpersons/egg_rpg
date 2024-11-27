@@ -8,6 +8,7 @@ use bevy_ecs_ldtk::prelude::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use palette::PalettePlugin;
 
+mod audio;
 mod warp;
 mod palette;
 mod collision;
@@ -36,13 +37,14 @@ fn startup(
     // First level to load.
     commands.spawn(LdtkWorldBundle {
         ldtk_handle: asset_server.load("world.ldtk"),
-        level_set: LevelSet::from_iids(["7ad44690-3b70-11ee-859e-e1ae46b9be7a"]),
+        level_set: LevelSet::from_iids(["df73df90-9b00-11ef-b670-2db67582fbfe"]),
+        //level_set: LevelSet::from_iids(["79d1ad10-3b70-11ee-be03-9d15b076a939"]),
         ..Default::default()
     });
 
     // let egg_char_anim_handle = asset_server.load("egg_stomp-Sheet.png");
     // let egg_char_anim_atlas = TextureAtlas::from_grid(egg_char_anim_handle, Vec2::new(16.0, 16.0), 16, 1, None, None);
-    // let egg_char_anim_atlas_handle = texture_atlases.add(egg_char_anim_atlas);
+    // let egg_char_anim_atlas_handle = texture_atlases.add(egg_char _anim_atlas);
     
     // commands.spawn(character::PlayerBundle {
     //     spritesheet_bundle: SpriteSheetBundle {
@@ -82,6 +84,8 @@ fn main() {
             ..default()
         })
         //.insert_resource(LevelSelection::Indices(LevelIndices { level: 0, world: None }))
+
+        .add_plugins(audio::AudioPlugin)
         .add_plugins(level_loading::LevelLoadingPlugin)
         .add_plugins(collision::CollisionPlugin)
         .add_plugins(camera::PlayerFollowCameraPlugin)

@@ -1,7 +1,7 @@
 use std::{collections::HashSet, thread::current};
 
 use bevy::prelude::*;
-use bevy_ecs_ldtk::{prelude::*, utils::{ldtk_grid_coords_to_grid_coords, ldtk_pixel_coords_to_grid_coords, ldtk_pixel_coords_to_translation, translation_to_grid_coords}};
+use bevy_ecs_ldtk::{prelude::*, utils::{self, ldtk_grid_coords_to_grid_coords, ldtk_pixel_coords_to_grid_coords, ldtk_pixel_coords_to_translation, translation_to_grid_coords}};
 use bevy_ecs_tilemap::prelude::*;
 use bevy::{app::{App, Plugin, Update}, asset::{Assets, Handle}, ecs::{entity, world}, math::IVec2, prelude::{Added, Bundle, Commands, Component, Entity, EventReader, Query, Res, ResMut, Resource, With, World}};
 use bevy_ecs_ldtk::{app::LdtkIntCellAppExt, assets::{LdtkProject, LevelMetadataAccessor}, EntityInstance, GridCoords, IntGridCell, LdtkIntCell, LevelEvent};
@@ -54,6 +54,8 @@ fn world_grid_coords_required(mut commands: Commands,
                 // Yay, this is the adjustment required *phew*
                 let mut level_origin_adjusted = IVec2::new(level.world_x, 0 - level.world_y - level.px_hei);
                 level_origin_adjusted = level_origin_adjusted / TILE_GRID_SIZE;
+
+                //let mut level_origin_adjusted = utils::ldtk_pixel_coords_to_grid_coords(IVec2::new(level.world_x, level.world_y), level.px_hei / TILE_GRID_SIZE.y, TILE_GRID_SIZE);
 
                 //println!("level world pos adjusted: {}, {}", level_origin_adjusted.x, level_origin_adjusted.y);
 
