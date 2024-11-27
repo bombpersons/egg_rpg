@@ -1,6 +1,6 @@
-use bevy::{prelude::*, render::{render_resource::{TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, Extent3d}, camera::{RenderTarget, Viewport, ScalingMode}}, window::{PrimaryWindow, WindowResized}};
+use bevy::{audio::PlaybackMode, prelude::*, render::{camera::{RenderTarget, ScalingMode, Viewport}, render_resource::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages}}, window::{PrimaryWindow, WindowResized}};
 
-use crate::{character::Player, post_process::{PaletteSwapPostProcessSettings, PaletteSwapPostProcessPlugin}};
+use crate::{audio::BGMBundle, character::Player, post_process::{PaletteSwapPostProcessPlugin, PaletteSwapPostProcessSettings}};
 
 // A camera that only draws a certain area of pixels.
 // Uses a render target to draw to, then scales that up to whatever size is required.

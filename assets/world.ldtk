@@ -887,7 +887,10 @@
 			"__bgPos": null,
 			"externalRelPath": null,
 			"fieldInstances": [
-				{ "__identifier": "BGM", "__type": "FilePath", "__value": null, "__tile": null, "defUid": 32, "realEditorValues": [] },
+				{ "__identifier": "BGM", "__type": "FilePath", "__value": "music/town.mp3", "__tile": null, "defUid": 32, "realEditorValues": [{
+					"id": "V_String",
+					"params": ["music/town.mp3"]
+				}] },
 				{ "__identifier": "Palette", "__type": "Array<Color>", "__value": [ "#A6FF96", "#437505", "#3A4501", "#513503" ], "__tile": null, "defUid": 33, "realEditorValues": [ { "id": "V_Int", "params": [10944406] }, { "id": "V_Int", "params": [4420869] }, { "id": "V_Int", "params": [3818753] }, { "id": "V_Int", "params": [5321987] } ] }
 			],
 			"layerInstances": [
@@ -3429,7 +3432,10 @@
 			"__bgPos": null,
 			"externalRelPath": null,
 			"fieldInstances": [
-				{ "__identifier": "BGM", "__type": "FilePath", "__value": null, "__tile": null, "defUid": 32, "realEditorValues": [] },
+				{ "__identifier": "BGM", "__type": "FilePath", "__value": "music/creepy.mp3", "__tile": null, "defUid": 32, "realEditorValues": [{
+					"id": "V_String",
+					"params": ["music/creepy.mp3"]
+				}] },
 				{ "__identifier": "Palette", "__type": "Array<Color>", "__value": [ "#8360C1", "#2C13AD", "#002234", "#00110E" ], "__tile": null, "defUid": 33, "realEditorValues": [ { "id": "V_Int", "params": [8609985] }, { "id": "V_Int", "params": [2888621] }, { "id": "V_Int", "params": [8756] }, { "id": "V_Int", "params": [4366] } ] }
 			],
 			"layerInstances": [
@@ -3548,22 +3554,22 @@
 					"entityInstances": [
 						{
 							"__identifier": "Player",
-							"__grid": [20,10],
+							"__grid": [5,2],
 							"__pivot": [0,0],
 							"__tags": ["Player"],
 							"__tile": null,
 							"__smartColor": "#00FF2D",
-							"iid": "72fee920-9b00-11ef-b670-25d7ef884651",
+							"iid": "54762d60-9b00-11ef-8508-e9c7a35178e0",
 							"width": 16,
 							"height": 16,
 							"defUid": 17,
-							"px": [320,160],
-							"fieldInstances": [{ "__identifier": "Spritesheet", "__type": "FilePath", "__value": "egg_stomp-Sheet.png", "__tile": null, "defUid": 27, "realEditorValues": [{
+							"px": [80,32],
+							"fieldInstances": [{ "__identifier": "Spritesheet", "__type": "FilePath", "__value": "egg_vilager.png", "__tile": null, "defUid": 27, "realEditorValues": [{
 								"id": "V_String",
-								"params": ["egg_stomp-Sheet.png"]
+								"params": ["egg_vilager.png"]
 							}] }],
-							"__worldX": 320,
-							"__worldY": -320
+							"__worldX": 80,
+							"__worldY": -448
 						}
 					]
 				},
