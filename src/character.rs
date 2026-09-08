@@ -141,9 +141,13 @@ fn tile_movement_lerp(mut query: Query<(&WorldGridCoords, &mut TileMover, &mut T
 
         // Transforms are relative to our parent, so world pixel positions
         // need converting into the parent's local space first.
+        // The point we convert must be in world space, so the z needs to be
+        // the global z (parent z + local z), otherwise the parent's z offset
+        // gets subtracted from our local z every frame and we sink behind
+        // the tile layers. (e.g. for actors, which are parented to their layer.)
         let world_to_parent_local = |world_pos: Vec2| -> Vec3 {
             if let Ok(parent_transform) = parent_transforms.get(parent.get()) {
-                parent_transform.affine().inverse().transform_point(Vec3::new(world_pos.x, world_pos.y, z))
+                parent_transform.affine().inverse().transform_point(Vec3::new(world_pos.x, world_pos.y, parent_transform.translation().z + z))
             } else {
                 Vec3::new(world_pos.x, world_pos.y, z)
             }
