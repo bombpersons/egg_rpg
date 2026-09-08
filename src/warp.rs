@@ -1,9 +1,20 @@
 use std::{collections::HashMap, time::Duration};
 
-use bevy::{app::{FixedUpdate, Plugin}, asset::{Assets, Handle}, prelude::{run_once, Bundle, Commands, Component, Entity, EventReader, IntoSystemConfigs, Query, Res, ResMut, Resource, With, Without}, time::{Time, Timer, TimerMode}};
+use bevy::{app::{FixedUpdate, Plugin}, asset::{Assets, Handle}, math::IVec2, prelude::{run_once, Bundle, Commands, Component, Entity, EventReader, IntoSystemConfigs, Query, Res, ResMut, Resource, With, Without}, time::{Time, Timer, TimerMode}};
 use bevy_ecs_ldtk::{app::LdtkEntityAppExt, assets::{InternalLevels, LdtkJsonWithMetadata, LdtkProject}, prelude::LdtkFields, EntityIid, EntityInstance, GridCoords, LdtkEntity, LevelIid, LevelSelection};
 
-use crate::{character::{Player, TileMovedEvent}, collision::{self, WorldGridCoords, WorldGridCoordsRequired, TILE_GRID_SIZE}, post_process::PaletteSwapPostProcessSettings, util::run_if_ldtk_project_resource_available};
+use crate::{character::{Player, TileMovedEvent}, coords::WorldGridCoords, post_process::PaletteSwapPostProcessSettings, util::run_if_ldtk_project_resource_available};
+
+// Get the world_depth of the level that an instance belongs to.
+fn level_depth_for_iid(ldtk_project: &LdtkProject, level_iid: &str) -> i32 {
+    for level in &ldtk_project.json_data().levels {
+        if level.iid == level_iid {
+            return level.world_depth;
+        }
+    }
+
+    0
+}
 
 // The target of a warp. 
 #[derive(Clone, Debug)]
@@ -47,19 +58,13 @@ fn build_warp_cache(mut warp_cache: ResMut<WarpCache>,
             for instance in &entry.instances_data {
 
                 // Get the z coord from the level it belongs to.
-                let mut z = 0;
-                for level in &ldtk_project.json_data().levels {
-                    if level.iid == instance.iids.level_iid {
-                        z = level.world_depth;
-                    }
-                }
+                let z = level_depth_for_iid(ldtk_project, &instance.iids.level_iid);
 
                 // Convert the world position of the instance to worldgridcoords.
-                let world_grid_coords = WorldGridCoords {
-                    x: (instance.world_x + instance.wid_px/2) / TILE_GRID_SIZE.x,
-                    y: -(instance.world_y + instance.hei_px/2) / TILE_GRID_SIZE.y,
-                    z: z
-                };
+                let world_grid_coords = WorldGridCoords::from_ldtk_world_px_center(IVec2::new(
+                    instance.world_x + instance.wid_px/2,
+                    instance.world_y + instance.hei_px/2
+                )).with_z(z);
 
                 // Get the target this one points to.
                 if let Some(serde_json::Value::Object(fields)) = &instance.fields {
@@ -95,19 +100,13 @@ fn build_warp_cache(mut warp_cache: ResMut<WarpCache>,
             for instance in &entry.instances_data {
                 
                 // Get the z coord from the level it belongs to.
-                let mut z = 0;
-                for level in &ldtk_project.json_data().levels {
-                    if level.iid == instance.iids.level_iid {
-                        z = level.world_depth;
-                    }
-                }
+                let z = level_depth_for_iid(ldtk_project, &instance.iids.level_iid);
 
                 // Convert the world position of the instance to worldgridcoords.
-                let world_grid_coords = WorldGridCoords {
-                    x: (instance.world_x + instance.wid_px/2) / TILE_GRID_SIZE.x,
-                    y: -(instance.world_y + instance.hei_px/2) / TILE_GRID_SIZE.y,
-                    z: z
-                };
+                let world_grid_coords = WorldGridCoords::from_ldtk_world_px_center(IVec2::new(
+                    instance.world_x + instance.wid_px/2,
+                    instance.world_y + instance.hei_px/2
+                )).with_z(z);
 
                 warp_cache.warp_targets.insert(EntityIid::new(instance.iids.entity_iid.clone()), world_grid_coords);
             }

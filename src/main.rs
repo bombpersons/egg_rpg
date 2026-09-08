@@ -11,6 +11,7 @@ use palette::PalettePlugin;
 mod audio;
 mod warp;
 mod palette;
+mod coords;
 mod collision;
 mod camera;
 mod character;

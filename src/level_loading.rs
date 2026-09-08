@@ -7,12 +7,12 @@
 
 // so instead of letting bevy_ecs_ldtk do it, we're gonna do it manually.
 
-use std::{collections::{HashMap, HashSet}, thread::current};
+use std::collections::{HashMap, HashSet};
 
-use bevy::{app::{FixedUpdate, Plugin}, asset::{Assets, Handle}, log::Level, math::{Rect, Vec2, Vec3Swizzles}, prelude::{run_once, Added, Commands, Component, Entity, Event, EventReader, EventWriter, GlobalTransform, IntoSystemConfigs, Query, Res, ResMut, Resource, With}};
+use bevy::{app::{FixedUpdate, Plugin}, asset::{Assets, Handle}, log::Level, math::Vec3Swizzles, prelude::{run_once, Added, Commands, Component, Entity, Event, EventReader, EventWriter, GlobalTransform, IntoSystemConfigs, Query, Res, ResMut, Resource, With}};
 use bevy_ecs_ldtk::{assets::{LdtkProject, LevelMetadataAccessor}, EntityIid, LevelEvent, LevelIid, LevelSet, Worldly};
 
-use crate::{character::Player, collision::WorldGridCoords, util::run_if_ldtk_project_resource_available};
+use crate::{character::Player, coords::WorldGridCoords, util::run_if_ldtk_project_resource_available};
 
 // This just tracks what level an entity is currently contained within.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Component)]
@@ -57,16 +57,7 @@ fn track_level(mut commands: Commands,
 
         // Go through each level and see which bounds we are contained within.
         for level in &ldtk_project.json_data().levels {
-            let level_bounds = Rect {
-                min: Vec2::new(
-                    level.world_x as f32,
-                    (0 - level.world_y - level.px_hei) as f32
-                ),
-                max: Vec2::new(
-                (level.world_x + level.px_wid) as f32,
-                    -level.world_y as f32,
-                ),
-            };
+            let level_bounds = WorldGridCoords::level_bounds_bevy(level);
 
             // We're within the 2d bounds...
             if level_bounds.contains(global_transform.translation().xy()) {

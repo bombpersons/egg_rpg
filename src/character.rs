@@ -4,7 +4,7 @@ use bevy::{ecs::world, prelude::*, scene::ron::de, sprite::{Material2d, Material
 use bevy_ecs_tilemap::prelude::*;
 use bevy_ecs_ldtk::{assets::{InternalLevels, LdtkJsonWithMetadata}, prelude::*};
 
-use crate::{camera::PlayerFollowCameraBundle, collision::{self, BlockedTilesCache, Blocking, WorldGridCoords, WorldGridCoordsRequired}, level_loading::CurrentLevel, post_process::PaletteSwapPostProcessSettings};
+use crate::{camera::PlayerFollowCameraBundle, collision::{BlockedTilesCache, Blocking, WorldGridCoordsRequired}, coords::WorldGridCoords, level_loading::CurrentLevel, post_process::PaletteSwapPostProcessSettings};
 
 const MOVEMENT_TICK: f32 = 20.0 / 60.0;
 const ANIMATION_FRAME_TIME: f32 = MOVEMENT_TICK / 2.0;
@@ -13,11 +13,6 @@ const ANIMATION_FRAME_TIME: f32 = MOVEMENT_TICK / 2.0;
 #[derive(Component)]
 pub struct TileLocked {
     pub position: IVec2
-}
-
-fn world_grid_coord_to_world_pixel(world_grid_coords: &WorldGridCoords) -> Vec2 {
-    let grid_coords = GridCoords { x: world_grid_coords.x, y: world_grid_coords.y };
-    bevy_ecs_ldtk::utils::grid_coords_to_translation(grid_coords, collision::TILE_GRID_SIZE)
 }
 
 // A direction that a TileMover could be moving in.
@@ -73,7 +68,7 @@ impl Default for TileMover {
 #[derive(Event)]
 pub struct TileMovedEvent {
     pub entity: Entity,
-    pub pos: IVec2
+    pub pos: WorldGridCoords
 }
 
 fn tile_movement_tick(time: Res<Time>, blocked_tile_cache: Res<BlockedTilesCache>,
@@ -89,7 +84,7 @@ fn tile_movement_tick(time: Res<Time>, blocked_tile_cache: Res<BlockedTilesCache
             // If we only just finished the timer, then we finished moving this frame.
             // Trigger a TileMovedEvent, because this is when the tile finished actually moving to the new position.
             if tile_mover.timer.just_finished() {
-                tile_moved_event_writer.send( TileMovedEvent { entity, pos: IVec2::new(world_grid_coords.x, world_grid_coords.y) });
+                tile_moved_event_writer.send( TileMovedEvent { entity, pos: *world_grid_coords });
             }
 
             // If we aren't moving but want to be, process that.
@@ -133,25 +128,36 @@ fn tile_movement_tick(time: Res<Time>, blocked_tile_cache: Res<BlockedTilesCache
     }
 }
 
-fn tile_movement_lerp(mut query: Query<(&mut WorldGridCoords, &mut TileMover, &mut Transform)>) {
-    for (mut world_grid_coords, mut tile_mover, mut transform) in query.iter_mut() {
+fn tile_movement_lerp(mut query: Query<(&WorldGridCoords, &mut TileMover, &mut Transform, &Parent)>,
+                      parent_transforms: Query<&GlobalTransform>) {
+    for (world_grid_coords, mut tile_mover, mut transform, parent) in query.iter_mut() {
+        // Our tile positions, expressed in bevy world pixels.
+        let moving_to_pos = world_grid_coords.to_world_px_center();
         let move_dir_vec = movedir_to_vec(tile_mover.moving_dir);
-        let moving_to_pos = world_grid_coord_to_world_pixel(&world_grid_coords);
         let moving_from_gridcoord = WorldGridCoords { x: world_grid_coords.x - move_dir_vec.x, y: world_grid_coords.y - move_dir_vec.y, z: world_grid_coords.z };
-        let moving_from_pos = world_grid_coord_to_world_pixel(&moving_from_gridcoord);
+        let moving_from_pos = moving_from_gridcoord.to_world_px_center();
         
         let z = transform.translation.z;
+
+        // Transforms are relative to our parent, so world pixel positions
+        // need converting into the parent's local space first.
+        let world_to_parent_local = |world_pos: Vec2| -> Vec3 {
+            if let Ok(parent_transform) = parent_transforms.get(parent.get()) {
+                parent_transform.affine().inverse().transform_point(Vec3::new(world_pos.x, world_pos.y, z))
+            } else {
+                Vec3::new(world_pos.x, world_pos.y, z)
+            }
+        };
 
         // If we are moving, animate that move.
         if !tile_mover.timer.finished() {
             // How far through the timer are we?
             let timer_ratio = tile_mover.timer.elapsed_secs() / tile_mover.timer.duration().as_secs_f32();
 
-            // TODO: make this work
-            transform.translation = Vec3::new(moving_from_pos.x, moving_from_pos.y, z).lerp(Vec3::new(moving_to_pos.x, moving_to_pos.y, z), timer_ratio);
+            transform.translation = world_to_parent_local(moving_from_pos).lerp(world_to_parent_local(moving_to_pos), timer_ratio);
         } else {
             // Not moving anymore. 
-            transform.translation = Vec3::new(moving_to_pos.x, moving_to_pos.y, z);
+            transform.translation = world_to_parent_local(moving_to_pos);
             tile_mover.moving_dir = MoveDir::NotMoving;
         }
     }
