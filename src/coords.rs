@@ -46,7 +46,7 @@ impl WorldGridCoords {
     pub fn from_ldtk_world_px_center(center_ydown: IVec2) -> Self {
         Self {
             x: center_ydown.x.div_euclid(TILE_GRID_SIZE.x),
-            y: -center_ydown.y.div_euclid(TILE_GRID_SIZE.y),
+            y: (-center_ydown.y).div_euclid(TILE_GRID_SIZE.y),
             z: 0
         }
     }
