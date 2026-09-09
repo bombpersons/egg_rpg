@@ -1,31 +1,22 @@
-use std::{collections::HashSet, thread::current};
+use std::collections::HashSet;
 
 use bevy::prelude::*;
 use bevy_ecs_ldtk::{prelude::*, utils::{self, ldtk_grid_coords_to_grid_coords, ldtk_pixel_coords_to_grid_coords, ldtk_pixel_coords_to_translation, translation_to_grid_coords}};
 use bevy_ecs_tilemap::prelude::*;
-use bevy::{app::{App, Plugin, Update}, asset::{Assets, Handle}, ecs::{entity, world}, math::IVec2, prelude::{Added, Bundle, Commands, Component, Entity, EventReader, Query, Res, ResMut, Resource, With, World}};
+use bevy::{app::{App, Plugin, Update}, asset::{Assets, Handle}, ecs::{entity, world}, prelude::{Added, Bundle, Commands, Component, Entity, EventReader, Query, Res, ResMut, Resource, With, World}};
 use bevy_ecs_ldtk::{app::LdtkIntCellAppExt, assets::{LdtkProject, LevelMetadataAccessor}, EntityInstance, GridCoords, IntGridCell, LdtkIntCell, LevelEvent};
 
 use bevy_ecs_ldtk::app::LdtkEntity;
 use bevy_inspector_egui::egui::Grid;
 use ldtk::loaded_level::LoadedLevel;
 
-use crate::util;
+use crate::{coords::WorldGridCoords, util};
 
-pub const TILE_GRID_SIZE: IVec2 = IVec2::new(16, 16);
 const BLOCKED_TILE_GRID_CELL: i32 = 1;
 
 // This will be swapped out for a valid worldgridcoords
 #[derive(Debug, Default, Clone, Component)]
 pub struct WorldGridCoordsRequired;
-
-// A grid coordinate in world coordinates
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Component)]
-pub struct WorldGridCoords {
-    pub x: i32,
-    pub y: i32, 
-    pub z: i32 // Layer,
-}
 
 // A system that should set the world grid coords component to have correct world grid coordinates.
 fn world_grid_coords_required(mut commands: Commands,
@@ -52,18 +43,13 @@ fn world_grid_coords_required(mut commands: Commands,
                 //println!("level world pos: {}, {}, {}", level.world_x, level.world_y, level.world_depth);
 
                 // Yay, this is the adjustment required *phew*
-                let mut level_origin_adjusted = IVec2::new(level.world_x, 0 - level.world_y - level.px_hei);
-                level_origin_adjusted = level_origin_adjusted / TILE_GRID_SIZE;
-
-                //let mut level_origin_adjusted = utils::ldtk_pixel_coords_to_grid_coords(IVec2::new(level.world_x, level.world_y), level.px_hei / TILE_GRID_SIZE.y, TILE_GRID_SIZE);
-
-                //println!("level world pos adjusted: {}, {}", level_origin_adjusted.x, level_origin_adjusted.y);
+                let level_origin = WorldGridCoords::level_origin_grid(&level);
 
                 // Hurray now we can get the absolute origin of the level and adjust our coordinates.
                 // Insert the valid world grid coord component
                 let world_grid_coords = WorldGridCoords {
-                    x: level_origin_adjusted.x + grid_coords.x,
-                    y: level_origin_adjusted.y + grid_coords.y,
+                    x: level_origin.x + grid_coords.x,
+                    y: level_origin.y + grid_coords.y,
                     z: level.world_depth
                 };
                 commands.entity(entity).insert(world_grid_coords);

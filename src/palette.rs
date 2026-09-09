@@ -5,18 +5,14 @@ use bevy_ecs_ldtk::{app::LdtkEntityAppExt, assets::{LdtkProject, LevelMetadataAc
 
 use crate::{character::Player, level_loading::{CurrentLevel, CurrentLevelChangedEvent}, post_process::PaletteSwapPostProcessSettings, util::run_if_ldtk_project_resource_available};
 
-// impl Default for Palette {
-//     fn default() -> Self {
-//         Self {
-//             colours: [
-//                 Color::srgb(0.0, 0.0, 0.0),
-//                 Color::srgb(0.3, 0.3, 0.3),
-//                 Color::srgb(0.7,0.7, 0.7),
-//                 Color::srgb(1.0, 1.0, 1.0)
-//             ]
-//         }
-//     }
-// }
+fn default_palette() -> [ Color; 4 ] { 
+    [
+        Color::srgb(1.0, 1.0, 1.0),
+        Color::srgb(0.7,0.7, 0.7),
+        Color::srgb(0.3, 0.3, 0.3),
+        Color::srgb(0.0, 0.0, 0.0)                
+    ]
+}
 
 // Update the palette swaping post processing to match whatever palette is in the level the player is in.
 fn check_palette(player_query: Query<(&EntityIid, &CurrentLevel), With<Player>>,
@@ -43,7 +39,11 @@ fn check_palette(player_query: Query<(&EntityIid, &CurrentLevel), With<Player>>,
 
                     // Cool! So the player has entered a new level AND importantly it's actually been loaded too!
                     let level = ldtk_project.data().get_raw_level_by_iid(level_iid.get()).expect("Level supposedly loaded should exist!");
-                    let colours : [Color; 4] = level.get_colors_field("Palette").expect("All levels should have a palette field!")[0..4].try_into().unwrap();
+                    // let colours : [Color; 4] = level.get_colors_field("Palette").expect("All levels should have a palette field!")[0..4].try_into().unwrap();
+                    let colours : [Color; 4] = level.get_colors_field("Palette")
+                        .ok()
+                        .and_then(|c| if c.len() == 4 { c[0..4].try_into().ok() } else { None })
+                        .unwrap_or_else(default_palette);
 
                     // Get the palette settings entity to change the colors.
                     if let Ok(mut palette_settings) = palette_settings_query.get_single_mut() {

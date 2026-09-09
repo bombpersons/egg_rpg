@@ -52,8 +52,6 @@ fn enact_fade(mut commands: Commands,
             }
         });
 
-        println!("{}", sink.volume());
-
         // If we have used up our time, remove the entity for a fade out, remove the fade component for a fade in.
         if fade.time_used >= fade.time {
             match fade.fade_style {
